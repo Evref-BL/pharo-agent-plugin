@@ -55,7 +55,43 @@ function guidance() {
 }
 
 function pharoGuide() {
-  return `# Pharo project guide\n\nUse \`pharo-agent open\` before live-image work and edit projected source under \`.pharo-agent/mounts\`. Use \`pharo-agent pharo list\` to inspect the complete live MCP tool surface and \`pharo-agent pharo <tool> [arguments-json]\` to call a tool. \`pharo-agent mcp\` is a command-scoped stdio bundle for MCP clients such as mcporter.\n\nImage, Tonel, Iceberg, disk Git, and host processes are separate states. Before source loading, version compatibility, image-to-Git handoff, CI reproduction, or recovery, read the matching skill in \`.pharo-agent/skills/\`.\n`;
+  return `# Pharo project guide
+
+Use \`pharo-agent open\` before live-image work and edit projected source under
+\`.pharo-agent/mounts\`. Use \`pharo-agent pharo list\` to inspect the complete
+live MCP tool surface and \`pharo-agent pharo <tool> [arguments-json]\` to call
+a tool. \`pharo-agent mcp\` is a command-scoped stdio bundle for MCP clients
+such as mcporter.
+
+Image, Tonel, Iceberg, disk Git, and host processes are separate states.
+
+## Read first
+
+- Before Pharo source changes, read the project guidance. If absent, read the
+  local [coding rules](.pharo-agent/references/pharo-coding-rules.md) and
+  [coding style](.pharo-agent/references/pharo-coding-style.md).
+- Before loading a project, read
+  [.pharo-agent/skills/pharo-project-load/SKILL.md](.pharo-agent/skills/pharo-project-load/SKILL.md).
+- Before cross-version work, read
+  [.pharo-agent/skills/pharo-version-compat/SKILL.md](.pharo-agent/skills/pharo-version-compat/SKILL.md).
+- Before exporting image changes or changing Git state, read
+  [.pharo-agent/skills/pharo-image-git-handoff/SKILL.md](.pharo-agent/skills/pharo-image-git-handoff/SKILL.md).
+- Before reproducing smalltalkCI or GitHub failures, read
+  [.pharo-agent/skills/pharo-ci-repro/SKILL.md](.pharo-agent/skills/pharo-ci-repro/SKILL.md).
+- Before recovering a stopped standalone image, read
+  [.pharo-agent/skills/pharo-mcp-recovery/SKILL.md](.pharo-agent/skills/pharo-mcp-recovery/SKILL.md).
+- Before debugger sessions or repairs, read the local
+  [debugging guide](.pharo-agent/references/debugging.md).
+
+## Workflow
+
+1. Inspect the tool schema before acting; do not rely on remembered names.
+2. Prefer the least-mutating dedicated tool; use \`image_evaluate\` only when
+   no dedicated tool fits.
+3. Verify identity before mutation, make the narrowest change, then run focused
+   tests.
+4. Use the image-to-Git handoff skill before export or commit.
+`;
 }
 
 export function initialize({ host, mountRoot, cwd = process.cwd() }) {
@@ -74,6 +110,7 @@ export function initialize({ host, mountRoot, cwd = process.cwd() }) {
   );
   writeIfMissing(path.join(directory, ".gitignore"), "mounts/\nruntime/\n");
   fs.writeFileSync(path.join(projectRoot, "pharo.AGENTS.md"), pharoGuide());
+  copyDirectory(path.join(templateDirectory(), "references"), path.join(directory, "references"));
   copyDirectory(path.join(templateDirectory(), "skills"), path.join(directory, "skills"));
   updateManagedBlock(path.join(projectRoot, guideName), guidance());
 

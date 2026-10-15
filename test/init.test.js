@@ -29,6 +29,10 @@ test("init adds a conditional Codex block without replacing existing guidance", 
       { mountRoot: ".pharo-agent/mounts" },
     );
     assert.ok(fs.existsSync(path.join(root, ".pharo-agent", "skills", "pharo-project-load", "SKILL.md")));
+    assert.ok(fs.existsSync(path.join(root, ".pharo-agent", "references", "pharo-coding-rules.md")));
+    const pharoGuide = fs.readFileSync(path.join(root, "pharo.AGENTS.md"), "utf8");
+    assert.match(pharoGuide, /\.pharo-agent\/references\/pharo-coding-rules\.md/);
+    assert.doesNotMatch(pharoGuide, /https?:\/\//);
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }
