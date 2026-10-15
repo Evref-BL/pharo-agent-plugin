@@ -5,7 +5,7 @@ import { readJson, selectRunningImage } from "./runtime.js";
 
 export async function activeGateway(projectRoot, active) {
   const state = readJson(active.statePath);
-  const { image, mcpServerId } = selectRunningImage(state);
+  const { image, mcpServerId } = selectRunningImage(state, active.imageId);
   if (image.id !== active.imageId || mcpServerId !== active.mcpServerId) {
     throw new Error("The active PLexus image changed; run pharo-agent open again.");
   }

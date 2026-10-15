@@ -1,10 +1,14 @@
 # pharo-agent
 
 `pharo-agent` is a terminal-first Pharo integration for Codex, Claude Code, and
-OpenCode. Initialize it in a Pharo project for one selected agent host:
+OpenCode. It has one small setup skill; a project receives the full Pharo
+guidance only after setup.
+
+The project must already contain a `plexus.project.json` that declares one
+agent-facing image. Initialize it for one selected agent host:
 
 ```sh
-pharo-agent init --host codex
+npx --yes @evref-bl/pharo-agent-plugin init --host codex
 ```
 
 It writes a small conditional instruction block, `pharo.AGENTS.md`, and
@@ -16,5 +20,26 @@ closes the PLexus image. `pharo` calls any exposed MCP tool through the same
 project route, while `mcp` provides the complete tool surface as a transient
 stdio MCP bundle for tools such as mcporter.
 
-The development package links to the local PLexus workspaces. A release will
-replace those links with exact published package versions.
+Pass `--mount-root <path>` to `init` to use a different projection root.
+
+## Requirements
+
+PIFS currently supports the macOS workflow and needs
+[fuse-t](https://www.fuse-t.org/). Its matching daemon is downloaded by PIFS;
+Go is not required at runtime.
+
+The CLI pins its PLexus dependencies to released versions. PLexus, in turn,
+pins the MCP release used to prepare the image; PIFS is loaded at its own exact
+release from the image.
+
+## Host setup
+
+Codex and Claude Code can install the repository as a plugin. Its only global
+skill initializes the current project; it does not add an MCP server or the
+Pharo workflow catalogue to every chat. OpenCode uses the same CLI command
+with `--host opencode`.
+
+After initialization, the selected host guide says to read
+`pharo.AGENTS.md` only for Pharo work. That guide points to local workflow
+skills and references on demand. In the chat that runs setup, read that file
+before beginning Pharo work; later chats load the conditional guidance normally.

@@ -1,0 +1,17 @@
+{
+  "name": "evref-bl",
+  "interface": {
+    "displayName": "Evref-BL"
+  },
+  "plugins": [
+    {
+      "name": "pharo-agent",
+      "source": "./",
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Developer Tools"
+    }
+  ]
+}

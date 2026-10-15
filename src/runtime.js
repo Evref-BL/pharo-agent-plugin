@@ -44,8 +44,10 @@ export function resolveMountPath(projectRoot, config, imageId) {
   return path.resolve(projectRoot, root, imageId);
 }
 
-export function selectRunningImage(state) {
-  const images = (state.images ?? []).filter((image) => image.status === "running");
+export function selectRunningImage(state, imageId) {
+  const images = (state.images ?? []).filter(
+    (image) => image.status === "running" && (imageId === undefined || image.id === imageId),
+  );
   if (images.length !== 1) {
     throw new Error(
       `pharo-agent needs exactly one running image; PLexus reported ${images.length}.`,

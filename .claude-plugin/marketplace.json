@@ -1,0 +1,12 @@
+{
+  "name": "evref-bl",
+  "owner": {
+    "name": "Evref-BL"
+  },
+  "plugins": [
+    {
+      "name": "pharo-agent",
+      "source": "./"
+    }
+  ]
+}
