@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { initialize } from "../src/init.js";
+import { main } from "../src/cli.js";
 
 function temporaryProject() {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "pharo-agent-"));
@@ -48,4 +49,8 @@ test("init replaces only its own managed block", () => {
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }
+});
+
+test("help does not require a PLexus project", async () => {
+  await main(["--help"]);
 });

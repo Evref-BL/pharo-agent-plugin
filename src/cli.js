@@ -65,6 +65,10 @@ export async function main(args) {
     console.log(JSON.stringify({ ok: true, ...result }, null, 2));
     return;
   }
+  if (!command || command === "--help" || command === "help") {
+    console.log(usage());
+    return;
+  }
   const projectRoot = findProjectRoot();
   if (command === "open") {
     requireNoArguments(command, rest);
@@ -102,10 +106,6 @@ export async function main(args) {
       toolName,
       parseToolArguments(argumentsJson),
     ), null, 2));
-    return;
-  }
-  if (!command || command === "--help" || command === "help") {
-    console.log(usage());
     return;
   }
   throw new Error(`Unsupported command: ${command}\n${usage()}`);
