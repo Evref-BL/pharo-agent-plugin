@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { templateDirectory as mcpTemplateDirectory } from "@evref-bl/pharo-mcp";
 import { findProjectRoot, pluginDirectory } from "./project.js";
 
 const managedStart = "<!-- pharo-agent:begin -->";
@@ -11,10 +11,6 @@ const hostGuide = {
   codex: "AGENTS.md",
   opencode: "AGENTS.md",
 };
-
-function templateDirectory() {
-  return path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../templates");
-}
 
 function copyDirectory(source, target) {
   fs.mkdirSync(target, { recursive: true });
@@ -133,8 +129,9 @@ export function initialize({ host, mountRoot, cwd = process.cwd() }) {
   }
   writeIfMissing(path.join(directory, ".gitignore"), "mounts/\nruntime/\n");
   updateManagedBlock(pharoGuidePath, pharoGuide());
-  copyDirectory(path.join(templateDirectory(), "references"), path.join(directory, "references"));
-  copyDirectory(path.join(templateDirectory(), "skills"), path.join(directory, "skills"));
+  const templates = mcpTemplateDirectory();
+  copyDirectory(path.join(templates, "pharo-references"), path.join(directory, "references"));
+  copyDirectory(path.join(templates, "pharo-skills"), path.join(directory, "skills"));
   updateManagedBlock(path.join(projectRoot, guideName), guidance());
 
   return { projectRoot, guideName };

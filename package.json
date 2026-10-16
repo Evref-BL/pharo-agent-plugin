@@ -12,7 +12,6 @@
     "bin",
     "src",
     "skills",
-    "templates",
     "plugin.json",
     ".agents",
     ".claude-plugin",
@@ -28,8 +27,9 @@
     "test": "node --test"
   },
   "dependencies": {
-    "@evref-bl/plexus": "0.1.2",
-    "@evref-bl/plexus-gateway": "0.1.2",
+    "@evref-bl/pharo-mcp": "1.4.1",
+    "@evref-bl/plexus": "0.2.1",
+    "@evref-bl/plexus-gateway": "0.2.1",
     "@modelcontextprotocol/sdk": "1.32.1"
   }
 }

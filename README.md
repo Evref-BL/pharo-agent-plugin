@@ -11,8 +11,9 @@ agent-facing image. Initialize it for one selected agent host:
 npx --yes @evref-bl/pharo-agent-plugin init --host codex
 ```
 
-It writes a small conditional instruction block, `pharo.AGENTS.md`, and
-on-demand Pharo workflow skills. It does not install an agent-host MCP server.
+It writes a small conditional instruction block, `pharo.AGENTS.md`, and copies
+on-demand Pharo workflow skills and references from the pinned MCP template
+package. It does not install an agent-host MCP server.
 
 `open` starts the project image through PLexus, loads PIFS, and mounts its
 projection below `.pharo-agent/mounts`. `close` unmounts the projection and
@@ -28,9 +29,9 @@ PIFS currently supports the macOS workflow and needs
 [fuse-t](https://www.fuse-t.org/). Its matching daemon is downloaded by PIFS;
 Go is not required at runtime.
 
-The CLI pins its PLexus dependencies to released versions. PLexus, in turn,
-pins the MCP release used to prepare the image; PIFS is loaded at its own exact
-release from the image.
+The CLI pins released MCP and PLexus dependencies. PLexus, in turn, pins the
+MCP release used to prepare the image; PIFS is loaded at its own exact release
+from the image.
 
 ## Host setup
 
