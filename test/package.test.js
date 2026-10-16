@@ -16,7 +16,8 @@ test("package and host manifests share the plugin identity", () => {
   const agentPlugin = readJson("plugin.json");
   const claudePlugin = readJson(".claude-plugin/plugin.json");
 
-  assert.equal(packageJson.name, "@evref-bl/pharo-agent-plugin");
+  assert.equal(packageJson.name, "@evref-bl/pharo-agent");
+  assert.equal(packageJson.repository.url, "git+https://github.com/Evref-BL/pharo-agent-plugin.git");
   assert.equal(packageJson.dependencies["@evref-bl/pharo-mcp"], "1.4.1");
   assert.equal(packageJson.dependencies["@evref-bl/pharo-mcp"], defaultPharoMcpVersion);
   assert.equal(agentPlugin.name, "pharo-agent");
@@ -33,7 +34,7 @@ test("package and host manifests share the plugin identity", () => {
 test("setup skill installs the matching CLI release", () => {
   const packageJson = readJson("package.json");
   const skill = fs.readFileSync(path.join(root, "skills/pharo-setup/SKILL.md"), "utf8");
-  assert.match(skill, new RegExp(`@evref-bl/pharo-agent-plugin@${packageJson.version} init --host codex`));
+  assert.match(skill, new RegExp(`@evref-bl/pharo-agent@${packageJson.version} init --host codex`));
 });
 
 test("marketplaces expose the plugin from the repository root", () => {

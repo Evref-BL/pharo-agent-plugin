@@ -1,9 +1,13 @@
 {
-  "name": "@evref-bl/pharo-agent-plugin",
+  "name": "@evref-bl/pharo-agent",
   "version": "0.1.0",
   "private": false,
   "description": "Terminal-first Pharo integration for coding agents.",
   "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Evref-BL/pharo-agent-plugin.git"
+  },
   "type": "module",
   "bin": {
     "pharo-agent": "bin/pharo-agent.js"

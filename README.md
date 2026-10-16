@@ -8,7 +8,7 @@ The project must already contain a `plexus.project.json` that declares one
 agent-facing image. Initialize it for one selected agent host:
 
 ```sh
-npx --yes @evref-bl/pharo-agent-plugin init --host codex
+npx --yes @evref-bl/pharo-agent init --host codex
 ```
 
 It writes a small conditional instruction block, `pharo.AGENTS.md`, and copies

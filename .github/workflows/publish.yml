@@ -1,0 +1,50 @@
+name: Publish
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: GitHub release tag to publish.
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: npm-publish
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.release.tag_name || inputs.release_tag }}
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+          package-manager-cache: false
+
+      - name: Set up npm for trusted publishing
+        run: |
+          npm install -g npm@^11.5.1
+          npm --version
+
+      - run: npm ci
+      - run: npm test
+      - run: npm run check
+      - run: npm run package:check
+
+      - name: Verify release version
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name || inputs.release_tag }}
+        run: |
+          version="$(node -p "require('./package.json').version")"
+          test "v$version" = "$RELEASE_TAG"
+
+      - run: npm publish --access public
