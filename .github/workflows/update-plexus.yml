@@ -1,0 +1,109 @@
+name: Apply PLexus release
+
+on:
+  repository_dispatch:
+    types: [component-release]
+  workflow_dispatch:
+    inputs:
+      plexus_version:
+        description: Published PLexus version to apply.
+        required: true
+        type: string
+      mcp_version:
+        description: Matching published MCP version.
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  update:
+    if: github.event_name == 'workflow_dispatch' || github.event.client_payload.component == 'plexus'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/create-github-app-token@v2
+        id: app-token
+        with:
+          app-id: ${{ secrets.DEVNEXUS_AUTOMATION_APP_ID }}
+          private-key: ${{ secrets.DEVNEXUS_AUTOMATION_PRIVATE_KEY }}
+          owner: Evref-BL
+          repositories: pharo-agent-plugin
+
+      - uses: actions/checkout@v6
+        with:
+          token: ${{ steps.app-token.outputs.token }}
+
+      - name: Verify the published component versions
+        id: release
+        env:
+          EVENT_PLEXUS_VERSION: ${{ github.event.client_payload.version }}
+          EVENT_MCP_VERSION: ${{ github.event.client_payload.mcp_version }}
+          INPUT_PLEXUS_VERSION: ${{ inputs.plexus_version }}
+          INPUT_MCP_VERSION: ${{ inputs.mcp_version }}
+        run: |
+          plexus_version="${EVENT_PLEXUS_VERSION:-$INPUT_PLEXUS_VERSION}"
+          mcp_version="${EVENT_MCP_VERSION:-$INPUT_MCP_VERSION}"
+          [[ "$plexus_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          [[ "$mcp_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          test "$(npm view "@evref-bl/plexus@${plexus_version}" version)" = "$plexus_version"
+          test "$(npm view "@evref-bl/plexus-gateway@${plexus_version}" version)" = "$plexus_version"
+          test "$(npm view "@evref-bl/pharo-mcp@${mcp_version}" version)" = "$mcp_version"
+          temporary_directory="$(mktemp -d)"
+          trap 'rm -rf "$temporary_directory"' EXIT
+          npm install --prefix "$temporary_directory" --ignore-scripts --no-package-lock --no-save "@evref-bl/plexus@${plexus_version}"
+          published_mcp_version="$(
+            cd "$temporary_directory"
+            node --input-type=module -e '
+              import { defaultPharoMcpVersion } from "@evref-bl/plexus";
+              process.stdout.write(defaultPharoMcpVersion);
+            '
+          )"
+          test "$published_mcp_version" = "$mcp_version"
+          echo "plexus_version=$plexus_version" >> "$GITHUB_OUTPUT"
+          echo "mcp_version=$mcp_version" >> "$GITHUB_OUTPUT"
+
+      - name: Prepare the update
+        id: update
+        env:
+          MCP_VERSION: ${{ steps.release.outputs.mcp_version }}
+          PLEXUS_VERSION: ${{ steps.release.outputs.plexus_version }}
+        run: |
+          current_mcp_version="$(node -p 'require("./package.json").dependencies["@evref-bl/pharo-mcp"] ?? ""')"
+          if [[ -z "$current_mcp_version" ]]; then
+            exit 0
+          fi
+          current_plexus_version="$(node -p 'require("./package.json").dependencies["@evref-bl/plexus"]')"
+          if [[ "$current_mcp_version" == "$MCP_VERSION" && "$current_plexus_version" == "$PLEXUS_VERSION" ]]; then
+            exit 0
+          fi
+          npm install --save-exact --ignore-scripts \
+            "@evref-bl/pharo-mcp@${MCP_VERSION}" \
+            "@evref-bl/plexus@${PLEXUS_VERSION}" \
+            "@evref-bl/plexus-gateway@${PLEXUS_VERSION}"
+          npm test
+          npm run check
+          echo "needed=true" >> "$GITHUB_OUTPUT"
+
+      - name: Create update pull request
+        id: proposal
+        if: steps.update.outputs.needed == 'true'
+        uses: peter-evans/create-pull-request@v7
+        with:
+          token: ${{ steps.app-token.outputs.token }}
+          branch: automation/update-plexus-v${{ steps.release.outputs.plexus_version }}
+          delete-branch: true
+          commit-message: "chore: sync MCP v${{ steps.release.outputs.mcp_version }}"
+          title: "chore: sync MCP v${{ steps.release.outputs.mcp_version }}"
+          body: |
+            Automated update for the published matching PLexus and MCP releases.
+
+      - name: Merge after CI
+        if: steps.proposal.outputs.pull-request-number != ''
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          PR_NUMBER: ${{ steps.proposal.outputs.pull-request-number }}
+        run: |
+          gh pr checks "$PR_NUMBER" --watch --interval 10
+          gh pr merge "$PR_NUMBER" --squash --delete-branch
