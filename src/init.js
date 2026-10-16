@@ -29,13 +29,20 @@ function copyDirectory(source, target) {
   }
 }
 
-function updateManagedBlock(filePath, content) {
+function assertManagedBlockCanBeUpdated(filePath) {
   const current = fs.existsSync(filePath) ? fs.readFileSync(filePath, "utf8") : "";
   const start = current.indexOf(managedStart);
   const end = current.indexOf(managedEnd);
   if ((start === -1) !== (end === -1) || (end !== -1 && end < start)) {
     throw new Error(`Cannot update incomplete pharo-agent block in ${filePath}`);
   }
+}
+
+function updateManagedBlock(filePath, content) {
+  assertManagedBlockCanBeUpdated(filePath);
+  const current = fs.existsSync(filePath) ? fs.readFileSync(filePath, "utf8") : "";
+  const start = current.indexOf(managedStart);
+  const end = current.indexOf(managedEnd);
 
   const block = `${managedStart}\n${content}\n${managedEnd}\n`;
   const updated = start === -1
@@ -47,6 +54,17 @@ function updateManagedBlock(filePath, content) {
 function writeIfMissing(filePath, content) {
   if (!fs.existsSync(filePath)) {
     fs.writeFileSync(filePath, content);
+  }
+}
+
+function assertGeneratedGuideCanBeUpdated(filePath) {
+  if (!fs.existsSync(filePath)) return;
+  const content = fs.readFileSync(filePath, "utf8");
+  if (
+    content.trimEnd() !== pharoGuide().trimEnd()
+    && (!content.includes(managedStart) || !content.includes(managedEnd))
+  ) {
+    throw new Error(`Refusing to replace user-owned ${filePath}`);
   }
 }
 
@@ -103,13 +121,18 @@ export function initialize({ host, mountRoot, cwd = process.cwd() }) {
   const projectRoot = findProjectRoot(cwd);
   const directory = pluginDirectory(projectRoot);
   const configPath = path.join(directory, "config.json");
+  const pharoGuidePath = path.join(projectRoot, "pharo.AGENTS.md");
+  assertGeneratedGuideCanBeUpdated(pharoGuidePath);
+  assertManagedBlockCanBeUpdated(path.join(projectRoot, guideName));
   fs.mkdirSync(directory, { recursive: true });
-  writeIfMissing(
-    configPath,
-    `${JSON.stringify({ mountRoot: mountRoot ?? ".pharo-agent/mounts" }, null, 2)}\n`,
-  );
+  if (!fs.existsSync(configPath) || mountRoot !== undefined) {
+    fs.writeFileSync(
+      configPath,
+      `${JSON.stringify({ mountRoot: mountRoot ?? ".pharo-agent/mounts" }, null, 2)}\n`,
+    );
+  }
   writeIfMissing(path.join(directory, ".gitignore"), "mounts/\nruntime/\n");
-  fs.writeFileSync(path.join(projectRoot, "pharo.AGENTS.md"), pharoGuide());
+  updateManagedBlock(pharoGuidePath, pharoGuide());
   copyDirectory(path.join(templateDirectory(), "references"), path.join(directory, "references"));
   copyDirectory(path.join(templateDirectory(), "skills"), path.join(directory, "skills"));
   updateManagedBlock(path.join(projectRoot, guideName), guidance());

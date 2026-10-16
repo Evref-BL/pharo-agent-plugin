@@ -1,7 +1,7 @@
 {
-  "name": "pharo-agent",
+  "name": "@evref-bl/pharo-agent-plugin",
   "version": "0.1.0",
-  "private": true,
+  "private": false,
   "description": "Terminal-first Pharo integration for coding agents.",
   "license": "Apache-2.0",
   "type": "module",
@@ -14,6 +14,8 @@
     "skills",
     "templates",
     "plugin.json",
+    ".agents",
+    ".claude-plugin",
     "README.md",
     "LICENSE"
   ],
@@ -22,11 +24,12 @@
   },
   "scripts": {
     "check": "node --check bin/pharo-agent.js && node --check src/*.js",
+    "package:check": "npm pack --dry-run",
     "test": "node --test"
   },
   "dependencies": {
-    "@evref-bl/plexus": "file:../PLexus/packages/plexus-core",
-    "@evref-bl/plexus-gateway": "file:../PLexus/packages/plexus-gateway",
-    "@modelcontextprotocol/sdk": "1.29.0"
+    "@evref-bl/plexus": "0.1.2",
+    "@evref-bl/plexus-gateway": "0.1.2",
+    "@modelcontextprotocol/sdk": "1.32.1"
   }
 }

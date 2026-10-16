@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { closeProject, openProject } from "@evref-bl/plexus";
 import { callActiveTool } from "./gateway.js";
+import { configuredActiveImageId } from "./project.js";
 import {
   activePath,
   clearActive,
@@ -13,9 +14,9 @@ import {
   writeActive,
 } from "./runtime.js";
 
-const pifsRelease = "v0.3.1";
+export const pifsRelease = "v0.4.0";
 
-function pifsStartCode(mountPath, imageName) {
+export function pifsStartCode(mountPath, imageName) {
   return `Metacello new
 	baseline: 'PharoImageFS';
 	repository: 'github://Evref-BL/pharo-image-fs:${pifsRelease}/src';
@@ -40,11 +41,12 @@ export async function openAgentImage(projectRoot) {
   if (fs.existsSync(activePath(projectRoot))) {
     return { alreadyOpen: true, ...readActive(projectRoot) };
   }
-  const opened = await openProject({ projectRoot });
+  const configuredImageId = configuredActiveImageId(projectRoot);
+  const opened = await openProject({ projectRoot, imageIds: [configuredImageId] });
   if (!opened.ok || opened.failures.length > 0) {
     throw new Error(opened.failures.map((failure) => failure.message).join("\n") || "PLexus could not open the project image.");
   }
-  const { image, mcpServerId } = selectRunningImage(opened.state);
+  const { image, mcpServerId } = selectRunningImage(opened.state, configuredImageId);
   const mountPath = resolveMountPath(projectRoot, readConfig(projectRoot), image.id);
   fs.mkdirSync(path.dirname(mountPath), { recursive: true });
   const active = {
@@ -74,7 +76,7 @@ export async function closeAgentImage(projectRoot) {
   } catch (error) {
     projectionError = error;
   }
-  const closed = await closeProject({ projectRoot });
+  const closed = await closeProject({ projectRoot, imageIds: [active.imageId] });
   if (!closed.ok || closed.failures.length > 0) {
     throw new Error(closed.failures.map((failure) => failure.message).join("\n") || "PLexus could not close the project image.");
   }

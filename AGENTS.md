@@ -25,6 +25,10 @@ an MCP server with Codex, Claude Code, or OpenCode.
 - Do not register template skills with an agent host. The generated root shim
   says to read `pharo.AGENTS.md` only for Pharo work; that guide selects a
   copied skill only when necessary.
+- Pin runtime npm dependencies to released exact versions; do not use local
+  workspace links or floating ranges.
+- The global setup skill must work from a plugin cache without `node_modules`.
+  Keep its one `npx` command pinned to the matching CLI release.
 
 ## Validation
 
