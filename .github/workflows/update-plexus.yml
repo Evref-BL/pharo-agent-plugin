@@ -82,6 +82,8 @@ jobs:
             "@evref-bl/pharo-mcp@${MCP_VERSION}" \
             "@evref-bl/plexus@${PLEXUS_VERSION}" \
             "@evref-bl/plexus-gateway@${PLEXUS_VERSION}"
+          version="$(npm version patch --no-git-tag-version)"
+          node scripts/set-version.mjs "${version#v}"
           npm test
           npm run check
           echo "needed=true" >> "$GITHUB_OUTPUT"
