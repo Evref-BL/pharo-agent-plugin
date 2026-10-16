@@ -3,6 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
+import { defaultPharoMcpVersion } from "@evref-bl/plexus";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -16,6 +17,8 @@ test("package and host manifests share the plugin identity", () => {
   const claudePlugin = readJson(".claude-plugin/plugin.json");
 
   assert.equal(packageJson.name, "@evref-bl/pharo-agent-plugin");
+  assert.equal(packageJson.dependencies["@evref-bl/pharo-mcp"], "1.4.1");
+  assert.equal(packageJson.dependencies["@evref-bl/pharo-mcp"], defaultPharoMcpVersion);
   assert.equal(agentPlugin.name, "pharo-agent");
   assert.equal(claudePlugin.name, agentPlugin.name);
   assert.equal(claudePlugin.version, agentPlugin.version);

@@ -3,6 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
+import { templateDirectory as mcpTemplateDirectory } from "@evref-bl/pharo-mcp";
 import { initialize } from "../src/init.js";
 import { main } from "../src/cli.js";
 
@@ -30,6 +31,10 @@ test("init adds a conditional Codex block without replacing existing guidance", 
     );
     assert.ok(fs.existsSync(path.join(root, ".pharo-agent", "skills", "pharo-project-load", "SKILL.md")));
     assert.ok(fs.existsSync(path.join(root, ".pharo-agent", "references", "pharo-coding-rules.md")));
+    assert.equal(
+      fs.readFileSync(path.join(root, ".pharo-agent", "references", "pharo-coding-rules.md"), "utf8"),
+      fs.readFileSync(path.join(mcpTemplateDirectory(), "pharo-references", "pharo-coding-rules.md"), "utf8"),
+    );
     const pharoGuide = fs.readFileSync(path.join(root, "pharo.AGENTS.md"), "utf8");
     assert.match(pharoGuide, /\.pharo-agent\/references\/pharo-coding-rules\.md/);
     assert.doesNotMatch(pharoGuide, /https?:\/\//);
