@@ -78,8 +78,8 @@ function pharoGuide() {
 Use \`pharo-agent open\` before live-image work and edit projected source under
 \`.pharo-agent/mounts\`. Use \`pharo-agent pharo list\` to inspect the complete
 live MCP tool surface and \`pharo-agent pharo <tool> [arguments-json]\` to call
-a tool. \`pharo-agent mcp\` is a command-scoped stdio bundle for MCP clients
-such as mcporter.
+a tool. \`pharo-agent mcp\` exposes the image as a command-scoped stdio MCP
+server.
 
 Image, Tonel, Iceberg, disk Git, and host processes are separate states.
 

@@ -17,7 +17,6 @@ an MCP server with Codex, Claude Code, or OpenCode.
 
 ## Interface
 
-- Use **agent host** in prose and `--host` as the only host selector.
 - Keep ordinary commands argument-light: `init --host`, `open`, `status`,
   `close`, and `pharo <tool> [arguments-json]`.
 - Never expose gateway URLs, ports, project roots, workspace IDs, target IDs,
