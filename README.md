@@ -17,8 +17,8 @@ on-demand Pharo workflow skills. It does not install an agent-host MCP server.
 `open` starts the project image through PLexus, loads PIFS, and mounts its
 projection below `.pharo-agent/mounts`. `close` unmounts the projection and
 closes the PLexus image. `pharo` calls any exposed MCP tool through the same
-project route, while `mcp` provides the complete tool surface as a transient
-stdio MCP bundle for tools such as mcporter.
+project route, while `mcp` exposes that tool surface as a command-scoped stdio
+MCP server.
 
 Pass `--mount-root <path>` to `init` to use a different projection root.
 
