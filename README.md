@@ -4,8 +4,7 @@
 OpenCode. It has one small setup skill; a project receives the full Pharo
 guidance only after setup.
 
-The project must already contain a `plexus.project.json` that declares one
-agent-facing image. Initialize it for one selected agent host:
+Initialize the current directory for one selected agent host:
 
 ```sh
 npx --yes @evref-bl/pharo-agent init --host codex
@@ -14,6 +13,22 @@ npx --yes @evref-bl/pharo-agent init --host codex
 It writes a small conditional instruction block, `pharo.AGENTS.md`, and copies
 on-demand Pharo workflow skills and references from the pinned MCP template
 package. It does not install an agent-host MCP server.
+
+`init` acts on the current directory and never searches above it. If that
+directory has no `plexus.project.json`, it creates one that declares the
+project and no image; an existing one is left untouched. It refuses to run
+inside an enclosing PLexus project rather than initializing that project root.
+
+Register the image the project needs before the first `open`:
+
+```sh
+pharo-agent image add dev --template 'Pharo 13.0 - 64bit (stable)'
+```
+
+`image add` registers a template-created image with the pinned MCP load policy
+and makes it active when no other image is. `image list`, `image use <id>`,
+and `image remove <id>` cover the rest; an open image must be closed before
+its declaration changes.
 
 `open` starts the project image through PLexus, loads PIFS, and mounts its
 projection below `.pharo-agent/mounts`. `close` unmounts the projection and

@@ -1,7 +1,13 @@
 import fs from "node:fs";
 import path from "node:path";
 import { templateDirectory as mcpTemplateDirectory } from "@evref-bl/pharo-mcp";
-import { findProjectRoot, pluginDirectory } from "./project.js";
+import {
+  createProjectConfig,
+  enclosingProjectRoot,
+  pluginDirectory,
+  projectConfigFileName,
+  projectConfigPath,
+} from "./project.js";
 
 const managedStart = "<!-- pharo-agent:begin -->";
 const managedEnd = "<!-- pharo-agent:end -->";
@@ -71,6 +77,18 @@ function guidance() {
 function pharoGuide() {
   return `# Pharo project guide
 
+\`plexus.project.json\` declares this project's images. A freshly initialized
+project declares none; register one before the first \`pharo-agent open\`:
+
+\`\`\`sh
+pharo-agent image list
+pharo-agent image add dev --template '<launcher template name>'
+\`\`\`
+
+\`image add\` makes the first registered image active. \`pharo-agent image use
+<id>\` switches the active image, and \`pharo-agent image remove <id>\` drops a
+declaration. Close an image before changing its declaration.
+
 Use \`pharo-agent open\` before live-image work and edit projected source under
 \`.pharo-agent/mounts\`. Use \`pharo-agent pharo list\` to inspect the complete
 live MCP tool surface and \`pharo-agent pharo <tool> [arguments-json]\` to call
@@ -108,18 +126,38 @@ Image, Tonel, Iceberg, disk Git, and host processes are separate states.
 `;
 }
 
+function resolveInitProjectRoot(cwd) {
+  const projectRoot = path.resolve(cwd);
+  if (fs.existsSync(projectConfigPath(projectRoot))) {
+    return { projectRoot, createdProjectConfig: false };
+  }
+
+  const enclosing = enclosingProjectRoot(projectRoot);
+  if (enclosing) {
+    throw new Error(
+      `${projectRoot} is inside the PLexus project at ${enclosing}. `
+        + `Initialize that project root, or remove its ${projectConfigFileName}.`,
+    );
+  }
+
+  return { projectRoot, createdProjectConfig: true };
+}
+
 export function initialize({ host, mountRoot, cwd = process.cwd() }) {
   const guideName = hostGuide[host];
   if (!guideName) {
     throw new Error("--host must be codex, claude, or opencode");
   }
 
-  const projectRoot = findProjectRoot(cwd);
+  const { projectRoot, createdProjectConfig } = resolveInitProjectRoot(cwd);
   const directory = pluginDirectory(projectRoot);
   const configPath = path.join(directory, "config.json");
   const pharoGuidePath = path.join(projectRoot, "pharo.AGENTS.md");
   assertGeneratedGuideCanBeUpdated(pharoGuidePath);
   assertManagedBlockCanBeUpdated(path.join(projectRoot, guideName));
+  if (createdProjectConfig) {
+    createProjectConfig(projectRoot);
+  }
   fs.mkdirSync(directory, { recursive: true });
   if (!fs.existsSync(configPath) || mountRoot !== undefined) {
     fs.writeFileSync(
@@ -134,5 +172,5 @@ export function initialize({ host, mountRoot, cwd = process.cwd() }) {
   copyDirectory(path.join(templates, "pharo-skills"), path.join(directory, "skills"));
   updateManagedBlock(path.join(projectRoot, guideName), guidance());
 
-  return { projectRoot, guideName };
+  return { projectRoot, guideName, createdProjectConfig };
 }
