@@ -7,7 +7,7 @@ import { defaultImageId, resolveImageId, writeConfig } from "../src/runtime.js";
 
 function temporaryProject(images, pluginConfig = {}) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "pharo-agent-project-"));
-  fs.writeFileSync(path.join(root, "plexus.project.json"), `${JSON.stringify({ images })}\n`);
+  fs.writeFileSync(path.join(root, "plexus.json"), `${JSON.stringify({ images })}\n`);
   fs.mkdirSync(path.join(root, ".pharo-agent"), { recursive: true });
   writeConfig(root, pluginConfig);
   return root;

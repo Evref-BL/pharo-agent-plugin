@@ -15,7 +15,7 @@ Use `--host claude` in Claude Code and `--host opencode` in OpenCode.
 Do not configure an MCP server in the agent host. The command adds only a
 conditional instruction block, so Pharo guidance stays out of unrelated work.
 
-Setup initializes the current directory, creating `plexus.project.json` with
+Setup initializes the current directory, creating `plexus.json` with
 no image when it is absent. Register one before the first `pharo-agent open`:
 
 ```sh
