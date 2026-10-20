@@ -1,18 +1,15 @@
-import fs from "node:fs";
 import {
   configuredImages,
   projectIdentity,
   readProjectConfig,
   writeProjectConfig,
 } from "./project.js";
-import { activePath, readActive } from "./runtime.js";
+import { readConfig, readOpenImages, writeConfig } from "./runtime.js";
 
 export const defaultLoadScript = "pharo/load-mcp.st";
 
 function assertNoOpenImage(projectRoot, imageId, action) {
-  if (!fs.existsSync(activePath(projectRoot))) return;
-  const active = readActive(projectRoot);
-  if (active.imageId === imageId) {
+  if (readOpenImages(projectRoot)[imageId]) {
     throw new Error(`Image ${imageId} is open. Run pharo-agent close before ${action}.`);
   }
 }
@@ -23,11 +20,17 @@ function derivedImageName(projectRoot, imageId) {
 }
 
 export function listImages(projectRoot) {
+  const configured = configuredImages(projectRoot);
+  const open = readOpenImages(projectRoot);
+  const defaultImage = readConfig(projectRoot).defaultImage
+    ?? (configured.length === 1 ? configured[0].id : undefined);
   return {
-    images: configuredImages(projectRoot).map((image) => ({
+    ...(defaultImage ? { defaultImage } : {}),
+    images: configured.map((image) => ({
       id: image.id,
       imageName: image.imageName,
-      active: image.active === true,
+      isDefault: image.id === defaultImage,
+      open: Boolean(open[image.id]),
       templateName: image.create?.templateName,
       templateCategory: image.create?.templateCategory,
     })),
@@ -48,7 +51,7 @@ export function addImage(projectRoot, { id, template, category, profile }) {
   const image = {
     id,
     imageName,
-    active: !images.some((other) => other.active === true),
+    active: true,
     mcp: { loadScript: defaultLoadScript, loadPolicy: "ifMissing" },
     create: {
       kind: "template",
@@ -59,25 +62,20 @@ export function addImage(projectRoot, { id, template, category, profile }) {
     },
   };
   writeProjectConfig(projectRoot, { ...config, images: [...images, image] });
-  return { id, imageName, active: image.active, templateName: template };
+  const pluginConfig = readConfig(projectRoot);
+  const isDefault = pluginConfig.defaultImage === undefined && images.length === 0;
+  if (isDefault) {
+    writeConfig(projectRoot, { ...pluginConfig, defaultImage: id });
+  }
+  return { id, imageName, isDefault, templateName: template };
 }
 
 export function useImage(projectRoot, id) {
-  const config = readProjectConfig(projectRoot);
-  const images = Array.isArray(config.images) ? config.images : [];
-  if (!images.some((image) => image.id === id)) {
+  if (!configuredImages(projectRoot).some((image) => image.id === id)) {
     throw new Error(`Image ${id} is not configured.`);
   }
-  for (const image of images) {
-    if (image.active === true && image.id !== id) {
-      assertNoOpenImage(projectRoot, image.id, "switching the active image");
-    }
-  }
-  writeProjectConfig(projectRoot, {
-    ...config,
-    images: images.map((image) => ({ ...image, active: image.id === id })),
-  });
-  return { activeImageId: id };
+  writeConfig(projectRoot, { ...readConfig(projectRoot), defaultImage: id });
+  return { defaultImage: id };
 }
 
 export function removeImage(projectRoot, id) {
@@ -91,5 +89,10 @@ export function removeImage(projectRoot, id) {
     ...config,
     images: images.filter((image) => image.id !== id),
   });
+  const pluginConfig = readConfig(projectRoot);
+  if (pluginConfig.defaultImage === id) {
+    const { defaultImage: _removed, ...rest } = pluginConfig;
+    writeConfig(projectRoot, rest);
+  }
   return { removedImageId: id };
 }
