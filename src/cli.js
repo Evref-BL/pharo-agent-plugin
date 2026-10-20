@@ -1,9 +1,9 @@
 import { initialize } from "./init.js";
 import { addImage, listImages, removeImage, useImage } from "./images.js";
-import { callActiveTool, listActiveTools, serveActiveMcp } from "./gateway.js";
-import { closeAgentImage, openAgentImage } from "./live.js";
+import { callImageTool, listImageTools, serveImagesMcp } from "./gateway.js";
+import { agentImageStatus, closeAgentImage, openAgentImage } from "./live.js";
 import { findProjectRoot } from "./project.js";
-import { readActive } from "./runtime.js";
+import { readOpenImage } from "./runtime.js";
 
 function parseInit(args) {
   let host;
@@ -52,6 +52,16 @@ function parseImageAdd(args) {
   return parsed;
 }
 
+function takeImageOption(args) {
+  const index = args.indexOf("--image");
+  if (index === -1) return { image: undefined, rest: args };
+  const image = args[index + 1];
+  if (!image) {
+    throw new Error("--image requires a value");
+  }
+  return { image, rest: [...args.slice(0, index), ...args.slice(index + 2)] };
+}
+
 function usage() {
   return [
     "Usage:",
@@ -60,12 +70,12 @@ function usage() {
     "  pharo-agent image add <id> --template <name> [--category <name>] [--profile <id>]",
     "  pharo-agent image use <id>",
     "  pharo-agent image remove <id>",
-    "  pharo-agent open",
+    "  pharo-agent open [--image <id>]",
     "  pharo-agent status",
-    "  pharo-agent close",
-    "  pharo-agent mcp",
-    "  pharo-agent pharo list",
-    "  pharo-agent pharo <tool> [arguments-json]",
+    "  pharo-agent close [--image <id>]",
+    "  pharo-agent mcp [--image <id>]",
+    "  pharo-agent pharo list [--image <id>]",
+    "  pharo-agent pharo <tool> [arguments-json] [--image <id>]",
   ].join("\n");
 }
 
@@ -123,39 +133,44 @@ export async function main(args) {
     }
     throw new Error(`Unsupported image command: ${subcommand ?? ""}\n${usage()}`);
   }
+  const { image, rest: commandArgs } = takeImageOption(rest);
   if (command === "open") {
-    requireNoArguments(command, rest);
-    console.log(JSON.stringify({ ok: true, ...(await openAgentImage(projectRoot)) }, null, 2));
+    requireNoArguments(command, commandArgs);
+    console.log(JSON.stringify({ ok: true, ...(await openAgentImage(projectRoot, image)) }, null, 2));
     return;
   }
   if (command === "close") {
-    requireNoArguments(command, rest);
-    console.log(JSON.stringify({ ok: true, ...(await closeAgentImage(projectRoot)) }, null, 2));
+    requireNoArguments(command, commandArgs);
+    console.log(JSON.stringify({ ok: true, ...(await closeAgentImage(projectRoot, image)) }, null, 2));
     return;
   }
   if (command === "status") {
-    requireNoArguments(command, rest);
-    console.log(JSON.stringify({ ok: true, ...readActive(projectRoot) }, null, 2));
+    requireNoArguments(command, commandArgs);
+    console.log(JSON.stringify({ ok: true, ...agentImageStatus(projectRoot) }, null, 2));
     return;
   }
   if (command === "mcp") {
-    requireNoArguments(command, rest);
-    await serveActiveMcp(projectRoot, readActive(projectRoot));
+    requireNoArguments(command, commandArgs);
+    await serveImagesMcp(projectRoot, image);
     return;
   }
   if (command === "pharo") {
-    const [toolName, argumentsJson, ...extra] = rest;
+    const [toolName, argumentsJson, ...extra] = commandArgs;
     if (toolName === "list") {
       if (argumentsJson || extra.length > 0) throw new Error("pharo list does not accept arguments");
-      console.log(JSON.stringify(await listActiveTools(projectRoot, readActive(projectRoot)), null, 2));
+      console.log(JSON.stringify(
+        await listImageTools(projectRoot, readOpenImage(projectRoot, image)),
+        null,
+        2,
+      ));
       return;
     }
     if (!toolName || extra.length > 0) {
       throw new Error("pharo requires one tool name and an optional JSON object");
     }
-    console.log(JSON.stringify(await callActiveTool(
+    console.log(JSON.stringify(await callImageTool(
       projectRoot,
-      readActive(projectRoot),
+      readOpenImage(projectRoot, image),
       toolName,
       parseToolArguments(argumentsJson),
     ), null, 2));

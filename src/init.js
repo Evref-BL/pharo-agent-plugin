@@ -85,15 +85,21 @@ pharo-agent image list
 pharo-agent image add dev --template '<launcher template name>'
 \`\`\`
 
-\`image add\` makes the first registered image active. \`pharo-agent image use
-<id>\` switches the active image, and \`pharo-agent image remove <id>\` drops a
-declaration. Close an image before changing its declaration.
+\`image add\` makes the first registered image the default. \`pharo-agent image
+use <id>\` changes the default, and \`pharo-agent image remove <id>\` drops a
+declaration. Close an image before removing its declaration.
 
 Use \`pharo-agent open\` before live-image work and edit projected source under
 \`.pharo-agent/mounts\`. Use \`pharo-agent pharo list\` to inspect the complete
 live MCP tool surface and \`pharo-agent pharo <tool> [arguments-json]\` to call
 a tool. \`pharo-agent mcp\` exposes the image as a command-scoped stdio MCP
 server.
+
+Several images can be open at once. Every image-facing command takes
+\`--image <id>\`; without it the default image answers. \`pharo-agent open
+--image <id>\` opens another image without closing the first,
+\`pharo-agent status\` lists what is open, and \`pharo-agent close\` closes
+everything this project opened.
 
 Image, Tonel, Iceberg, disk Git, and host processes are separate states.
 

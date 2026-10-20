@@ -71,18 +71,3 @@ export function configuredImages(projectRoot) {
   const config = readProjectConfig(projectRoot);
   return Array.isArray(config.images) ? config.images : [];
 }
-
-export function configuredActiveImageId(projectRoot) {
-  const images = configuredImages(projectRoot).filter((image) => image?.active);
-  if (images.length === 0) {
-    throw new Error(
-      "No active image in plexus.project.json. Register one with pharo-agent image add <id> --template <name>.",
-    );
-  }
-  if (images.length !== 1 || typeof images[0].id !== "string") {
-    throw new Error(
-      `pharo-agent needs exactly one active image in plexus.project.json; found ${images.length}.`,
-    );
-  }
-  return images[0].id;
-}

@@ -25,16 +25,23 @@ Register the image the project needs before the first `open`:
 pharo-agent image add dev --template 'Pharo 13.0 - 64bit (stable)'
 ```
 
-`image add` registers a template-created image with the pinned MCP load policy
-and makes it active when no other image is. `image list`, `image use <id>`,
-and `image remove <id>` cover the rest; an open image must be closed before
-its declaration changes.
+`image add` registers a template-created image with the pinned MCP load policy,
+and the first one registered becomes the default. `image list`,
+`image use <id>` (change the default) and `image remove <id>` cover the rest;
+an open image must be closed before its declaration is removed.
 
-`open` starts the project image through PLexus, loads PIFS, and mounts its
-projection below `.pharo-agent/mounts`. `close` unmounts the projection and
-closes the PLexus image. `pharo` calls any exposed MCP tool through the same
-project route, while `mcp` exposes that tool surface as a command-scoped stdio
-MCP server.
+`open` starts an image through PLexus, loads PIFS, and mounts its projection
+below `.pharo-agent/mounts`. `close` unmounts the projection and closes the
+PLexus image. `pharo` calls any exposed MCP tool through the same project
+route, while `mcp` exposes that tool surface as a command-scoped stdio MCP
+server.
+
+Several images can be open at once. `open`, `close`, `status`, `pharo` and
+`mcp` all accept `--image <id>`; without it the default image answers, so a
+project with one image never mentions an image at all. `open --image <id>`
+adds an image without closing the others, and `close` without `--image` closes
+every image this project opened. Over `mcp`, each Pharo tool takes the same
+optional `image` argument.
 
 Pass `--mount-root <path>` to `init` to use a different projection root.
 
