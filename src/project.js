@@ -1,11 +1,13 @@
 import fs from "node:fs";
 import path from "node:path";
 
+export const projectConfigFileName = "plexus.project.json";
+
 export function findProjectRoot(start = process.cwd()) {
   let directory = path.resolve(start);
 
   while (true) {
-    if (fs.existsSync(path.join(directory, "plexus.project.json"))) {
+    if (fs.existsSync(path.join(directory, projectConfigFileName))) {
       return directory;
     }
 
@@ -17,19 +19,66 @@ export function findProjectRoot(start = process.cwd()) {
   }
 }
 
+export function enclosingProjectRoot(start) {
+  const directory = path.resolve(start);
+  const parent = path.dirname(directory);
+  if (parent === directory) return undefined;
+  try {
+    return findProjectRoot(parent);
+  } catch {
+    return undefined;
+  }
+}
+
+export function projectConfigPath(projectRoot) {
+  return path.join(projectRoot, projectConfigFileName);
+}
+
 export function pluginDirectory(projectRoot) {
   return path.join(projectRoot, ".pharo-agent");
 }
 
-export function configuredActiveImageId(projectRoot) {
-  const configPath = path.join(projectRoot, "plexus.project.json");
-  let config;
+export function projectIdentity(projectRoot) {
+  const name = path.basename(path.resolve(projectRoot));
+  const id = name
+    .replaceAll(/[^A-Za-z0-9._-]+/g, "-")
+    .replaceAll(/^-+|-+$/g, "")
+    .toLowerCase();
+  return { id: id || "pharo-project", name };
+}
+
+export function readProjectConfig(projectRoot) {
+  const configPath = projectConfigPath(projectRoot);
   try {
-    config = JSON.parse(fs.readFileSync(configPath, "utf8"));
+    return JSON.parse(fs.readFileSync(configPath, "utf8"));
   } catch (error) {
     throw new Error(`Cannot read ${configPath}: ${error.message}`);
   }
-  const images = Array.isArray(config.images) ? config.images.filter((image) => image?.active) : [];
+}
+
+export function writeProjectConfig(projectRoot, config) {
+  fs.writeFileSync(projectConfigPath(projectRoot), `${JSON.stringify(config, null, 2)}\n`);
+}
+
+export function createProjectConfig(projectRoot) {
+  const { id, name } = projectIdentity(projectRoot);
+  const config = { id, name, images: [] };
+  writeProjectConfig(projectRoot, config);
+  return config;
+}
+
+export function configuredImages(projectRoot) {
+  const config = readProjectConfig(projectRoot);
+  return Array.isArray(config.images) ? config.images : [];
+}
+
+export function configuredActiveImageId(projectRoot) {
+  const images = configuredImages(projectRoot).filter((image) => image?.active);
+  if (images.length === 0) {
+    throw new Error(
+      "No active image in plexus.project.json. Register one with pharo-agent image add <id> --template <name>.",
+    );
+  }
   if (images.length !== 1 || typeof images[0].id !== "string") {
     throw new Error(
       `pharo-agent needs exactly one active image in plexus.project.json; found ${images.length}.`,
