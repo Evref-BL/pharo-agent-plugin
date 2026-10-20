@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 
-export const projectConfigFileName = "plexus.project.json";
+export const projectConfigFileName = "plexus.json";
 
 export function findProjectRoot(start = process.cwd()) {
   let directory = path.resolve(start);
@@ -13,7 +13,7 @@ export function findProjectRoot(start = process.cwd()) {
 
     const parent = path.dirname(directory);
     if (parent === directory) {
-      throw new Error("No plexus.project.json found above the current directory");
+      throw new Error("No plexus.json found above the current directory");
     }
     directory = parent;
   }

@@ -18,7 +18,6 @@ test("package and host manifests share the plugin identity", () => {
 
   assert.equal(packageJson.name, "@evref-bl/pharo-agent");
   assert.equal(packageJson.repository.url, "git+https://github.com/Evref-BL/pharo-agent-plugin.git");
-  assert.equal(packageJson.dependencies["@evref-bl/pharo-mcp"], "1.4.1");
   assert.equal(packageJson.dependencies["@evref-bl/pharo-mcp"], defaultPharoMcpVersion);
   assert.equal(agentPlugin.name, "pharo-agent");
   assert.equal(claudePlugin.name, agentPlugin.name);

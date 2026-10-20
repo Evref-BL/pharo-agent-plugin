@@ -15,7 +15,7 @@ on-demand Pharo workflow skills and references from the pinned MCP template
 package. It does not install an agent-host MCP server.
 
 `init` acts on the current directory and never searches above it. If that
-directory has no `plexus.project.json`, it creates one that declares the
+directory has no `plexus.json`, it creates one that declares the
 project and no image; an existing one is left untouched. It refuses to run
 inside an enclosing PLexus project rather than initializing that project root.
 

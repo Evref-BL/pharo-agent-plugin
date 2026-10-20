@@ -77,7 +77,7 @@ function guidance() {
 function pharoGuide() {
   return `# Pharo project guide
 
-\`plexus.project.json\` declares this project's images. A freshly initialized
+\`plexus.json\` declares this project's images. A freshly initialized
 project declares none; register one before the first \`pharo-agent open\`:
 
 \`\`\`sh

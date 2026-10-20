@@ -22,7 +22,7 @@ function openImage(root, imageId) {
 }
 
 function configuredImages(root) {
-  return JSON.parse(fs.readFileSync(path.join(root, "plexus.project.json"), "utf8")).images;
+  return JSON.parse(fs.readFileSync(path.join(root, "plexus.json"), "utf8")).images;
 }
 
 test("the first registered image becomes the default one", () => {

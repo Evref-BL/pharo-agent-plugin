@@ -14,7 +14,7 @@ function temporaryDirectory() {
 function temporaryProject() {
   const root = temporaryDirectory();
   fs.writeFileSync(
-    path.join(root, "plexus.project.json"),
+    path.join(root, "plexus.json"),
     `${JSON.stringify({ id: "existing", name: "existing", images: [] })}\n`,
   );
   return root;
@@ -143,7 +143,7 @@ test("init creates an empty PLexus project config in the current directory", () 
     assert.equal(result.projectRoot, root);
     assert.equal(result.createdProjectConfig, true);
     const config = JSON.parse(
-      fs.readFileSync(path.join(root, "plexus.project.json"), "utf8"),
+      fs.readFileSync(path.join(root, "plexus.json"), "utf8"),
     );
     assert.deepEqual(config.images, []);
     assert.equal(config.name, path.basename(root));
@@ -161,7 +161,7 @@ test("init keeps an existing PLexus project config", () => {
 
     assert.equal(result.createdProjectConfig, false);
     assert.equal(
-      JSON.parse(fs.readFileSync(path.join(root, "plexus.project.json"), "utf8")).id,
+      JSON.parse(fs.readFileSync(path.join(root, "plexus.json"), "utf8")).id,
       "existing",
     );
   } finally {
@@ -175,7 +175,7 @@ test("init refuses to initialize inside an enclosing PLexus project", () => {
   fs.mkdirSync(nested);
   try {
     assert.throws(() => initialize({ host: "codex", cwd: nested }), /is inside the PLexus project at/);
-    assert.equal(fs.existsSync(path.join(nested, "plexus.project.json")), false);
+    assert.equal(fs.existsSync(path.join(nested, "plexus.json")), false);
     assert.equal(fs.existsSync(path.join(root, "AGENTS.md")), false);
     assert.equal(fs.existsSync(path.join(nested, ".pharo-agent")), false);
   } finally {
