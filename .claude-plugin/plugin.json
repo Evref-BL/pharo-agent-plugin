@@ -1,7 +1,7 @@
 {
   "name": "pharo-agent",
   "displayName": "Pharo Agent",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Terminal-first Pharo image setup for coding agents.",
   "author": {
     "name": "Evref-BL",
@@ -10,5 +10,9 @@
   "homepage": "https://github.com/Evref-BL/pharo-agent-plugin",
   "repository": "https://github.com/Evref-BL/pharo-agent-plugin",
   "license": "Apache-2.0",
-  "keywords": ["pharo", "smalltalk", "mcp"]
+  "keywords": [
+    "pharo",
+    "smalltalk",
+    "mcp"
+  ]
 }
