@@ -46,3 +46,14 @@ test("marketplaces expose the plugin from the repository root", () => {
   assert.equal(claudeMarketplace.plugins[0].name, "pharo-agent");
   assert.equal(claudeMarketplace.plugins[0].source, "./");
 });
+
+test("the published CLI entry point is executable", () => {
+  const packageJson = readJson("package.json");
+  const binPath = path.join(root, packageJson.bin["pharo-agent"]);
+
+  assert.equal(
+    (fs.statSync(binPath).mode & 0o111) !== 0,
+    true,
+    `${packageJson.bin["pharo-agent"]} must keep its executable bit so a global install can run it`,
+  );
+});
