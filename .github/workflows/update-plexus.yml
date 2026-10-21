@@ -82,8 +82,6 @@ jobs:
             "@evref-bl/pharo-mcp@${MCP_VERSION}" \
             "@evref-bl/plexus@${PLEXUS_VERSION}" \
             "@evref-bl/plexus-gateway@${PLEXUS_VERSION}"
-          version="$(npm version patch --no-git-tag-version)"
-          node scripts/set-version.mjs "${version#v}"
           npm test
           npm run check
           echo "needed=true" >> "$GITHUB_OUTPUT"
@@ -96,10 +94,12 @@ jobs:
           token: ${{ steps.app-token.outputs.token }}
           branch: automation/update-plexus-v${{ steps.release.outputs.plexus_version }}
           delete-branch: true
-          commit-message: "chore: sync MCP v${{ steps.release.outputs.mcp_version }}"
-          title: "chore: sync MCP v${{ steps.release.outputs.mcp_version }}"
+          commit-message: "chore: pin PLexus v${{ steps.release.outputs.plexus_version }} and MCP v${{ steps.release.outputs.mcp_version }}"
+          title: "chore: pin PLexus v${{ steps.release.outputs.plexus_version }} and MCP v${{ steps.release.outputs.mcp_version }}"
           body: |
             Automated update for the published matching PLexus and MCP releases.
+
+            This only moves the pins. Releasing them is a separate version bump.
 
       - name: Merge after CI
         if: steps.proposal.outputs.pull-request-number != ''
