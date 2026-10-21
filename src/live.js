@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { closeProject, openProject } from "@evref-bl/plexus";
+import { ScopedPharoLauncher, closeProject, openProject } from "@evref-bl/plexus";
 import { callImageTool } from "./gateway.js";
 import {
   defaultImageId,
@@ -36,16 +36,56 @@ export function resultPrintString(result) {
   return undefined;
 }
 
+
+export function needsImageCreation(listed, imageId) {
+  const summary = listed.images.find((image) => image.imageId === imageId);
+  if (!summary) {
+    throw new Error(`PLexus does not know image ${imageId}.`);
+  }
+  // PLexus reports an image it has no runtime state for as declared.
+  return summary.status === "declared";
+}
+
+export function describeLifecycleFailure(failure) {
+  const stderr = failure.launcherResult?.raw?.stderr?.trim();
+  return [
+    `${failure.imageId}: ${failure.message}`,
+    failure.diagnostic,
+    failure.action,
+    stderr ? `launcher: ${stderr.slice(0, 500)}` : undefined,
+  ]
+    .filter(Boolean)
+    .join("\n  ");
+}
+
+// openProject and closeProject throw on failure, carrying the failures on the error.
+export async function runLifecycle(action, fallback) {
+  try {
+    return await action();
+  } catch (error) {
+    const failures = error?.result?.failures;
+    if (!Array.isArray(failures) || failures.length === 0) {
+      throw error;
+    }
+    throw new Error(`${fallback}\n${failures.map(describeLifecycleFailure).join("\n")}`);
+  }
+}
+
 export async function openAgentImage(projectRoot, imageId) {
   const resolved = resolveImageId(projectRoot, imageId);
   const openImages = readOpenImages(projectRoot);
   if (openImages[resolved]) {
     return { alreadyOpen: true, ...openImages[resolved] };
   }
-  const opened = await openProject({ projectRoot, imageIds: [resolved] });
-  if (!opened.ok || opened.failures.length > 0) {
-    throw new Error(opened.failures.map((failure) => failure.message).join("\n") || "PLexus could not open the project image.");
+  const launcher = new ScopedPharoLauncher({ projectRoot });
+  const created = needsImageCreation(launcher.listImages(), resolved);
+  if (created) {
+    await launcher.createImage(resolved);
   }
+  const opened = await runLifecycle(
+    () => openProject({ projectRoot, imageIds: [resolved] }),
+    `PLexus could not open image ${resolved}.`,
+  );
   const { image, mcpServerId } = selectRunningImage(opened.state, resolved);
   const mountPath = resolveMountPath(projectRoot, readConfig(projectRoot), image.id);
   fs.mkdirSync(path.dirname(mountPath), { recursive: true });
@@ -63,7 +103,7 @@ export async function openAgentImage(projectRoot, imageId) {
     throw new Error("PIFS started but did not report its projection port.");
   }
   writeOpenImages(projectRoot, { ...openImages, [resolved]: { ...open, projectionPort } });
-  return { imageId: image.id, mountPath, projectionPort };
+  return { imageId: image.id, created, mountPath, projectionPort };
 }
 
 async function closeOneImage(projectRoot, openImages, imageId) {
@@ -76,10 +116,10 @@ async function closeOneImage(projectRoot, openImages, imageId) {
   } catch (error) {
     projectionError = error;
   }
-  const closed = await closeProject({ projectRoot, imageIds: [imageId] });
-  if (!closed.ok || closed.failures.length > 0) {
-    throw new Error(closed.failures.map((failure) => failure.message).join("\n") || "PLexus could not close the project image.");
-  }
+  const closed = await runLifecycle(
+    () => closeProject({ projectRoot, imageIds: [imageId] }),
+    `PLexus could not close image ${imageId}.`,
+  );
   return { stoppedImages: closed.stoppedImages.map((image) => image.id), projectionError };
 }
 
