@@ -112,8 +112,14 @@ export function selectRunningImage(state, imageId) {
   }
   const image = images[0];
   if (!Array.isArray(image.mcpServers) || image.mcpServers.length !== 1) {
+    // PLexus withholds the route when the image is outside the MCP contract,
+    // and records why. Say that rather than only the endpoint count.
+    const contract = image.pharoMcpContract;
+    const reason = contract?.status === "unsupported" && contract.reason
+      ? ` ${contract.reason}`
+      : "";
     throw new Error(
-      `Image ${image.id} needs exactly one MCP endpoint; PLexus reported ${image.mcpServers?.length ?? 0}.`,
+      `Image ${image.id} needs exactly one MCP endpoint; PLexus reported ${image.mcpServers?.length ?? 0}.${reason}`,
     );
   }
   return { image, mcpServerId: image.mcpServers[0].id };

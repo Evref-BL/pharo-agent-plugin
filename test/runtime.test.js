@@ -258,3 +258,33 @@ test("a shared clone missing the pinned release is fetched, once", () => {
     fs.rmSync(root, { recursive: true, force: true });
   }
 });
+
+test("an unsupported Pharo version is explained, not just counted", () => {
+  const state = {
+    images: [
+      {
+        id: "dev",
+        status: "running",
+        pharoMcpContract: {
+          status: "unsupported",
+          reason: "Pharo 15 is outside the supported Pharo MCP range (12, 13, 14).",
+        },
+      },
+    ],
+  };
+
+  assert.throws(
+    () => selectRunningImage(state, "dev"),
+    /needs exactly one MCP endpoint; PLexus reported 0\. Pharo 15 is outside the supported Pharo MCP range/,
+  );
+});
+
+test("a supported image missing its endpoint still reports the count alone", () => {
+  const state = {
+    images: [
+      { id: "dev", status: "running", pharoMcpContract: { status: "matching" } },
+    ],
+  };
+
+  assert.throws(() => selectRunningImage(state, "dev"), /reported 0\.$/);
+});

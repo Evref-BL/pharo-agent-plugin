@@ -122,7 +122,15 @@ export async function openAgentImage(projectRoot, imageId) {
     () => openProject({ projectRoot, imageIds: [resolved] }),
     `PLexus could not open image ${resolved}.`,
   );
-  const { image, mcpServerId } = selectRunningImage(opened.state, resolved);
+  let image;
+  let mcpServerId;
+  try {
+    ({ image, mcpServerId } = selectRunningImage(opened.state, resolved));
+  } catch (error) {
+    // The image is running but unusable to us, so do not leave it behind.
+    await closeProject({ projectRoot, imageIds: [resolved] }).catch(() => {});
+    throw error;
+  }
   const mountPath = resolveMountPath(projectRoot, readConfig(projectRoot), image.id);
   fs.mkdirSync(path.dirname(mountPath), { recursive: true });
   const open = {
