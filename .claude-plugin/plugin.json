@@ -1,7 +1,7 @@
 {
   "name": "pharo-agent",
   "displayName": "Pharo Agent",
-  "version": "0.3.8",
+  "version": "0.3.9",
   "description": "Terminal-first Pharo image setup for coding agents.",
   "author": {
     "name": "Evref-BL",
