@@ -65,6 +65,9 @@ test("loads the released PIFS version and requests a dynamic projection port", (
   assert.match(pifsRelease, /^v\d+\.\d+\.\d+$/);
   assert.ok(source.includes(`pharo-image-fs:${pifsRelease}/src`));
   assert.match(source, /startOn: 0/);
+  // A shared clone made before this release would not resolve the tag otherwise.
+  assert.ok(source.includes(`(repository tags anySatisfy: [ :tag | tag name = '${pifsRelease}' ])`));
+  assert.match(source, /repository fetch/);
   // The baseline load runs after this code compiles, so the class cannot be named directly.
   assert.match(source, /\(Smalltalk globals at: #PIFSServer\)/);
   assert.doesNotMatch(source, /^\(PIFSServer/m);

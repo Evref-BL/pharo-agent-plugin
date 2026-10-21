@@ -16,7 +16,13 @@ import {
 export const pifsRelease = "v0.4.1";
 
 export function pifsStartCode(mountPath, imageName) {
-  return `Metacello new
+  return `"A shared Iceberg clone is never refetched, so a tag released after it was cloned cannot resolve."
+IceRepository registry
+	detect: [ :each | each name = 'pharo-image-fs' ]
+	ifFound: [ :repository |
+		(repository tags anySatisfy: [ :tag | tag name = '${pifsRelease}' ])
+			ifFalse: [ [ repository fetch ] on: Error do: [ :error | "the load below reports the real failure" ] ] ].
+Metacello new
 	baseline: 'PharoImageFS';
 	repository: 'github://Evref-BL/pharo-image-fs:${pifsRelease}/src';
 	load: 'Core'.
