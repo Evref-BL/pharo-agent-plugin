@@ -64,6 +64,9 @@ test("loads the released PIFS version and requests a dynamic projection port", (
   assert.equal(pifsRelease, "v0.4.0");
   assert.match(source, /pharo-image-fs:v0\.4\.0\/src/);
   assert.match(source, /startOn: 0/);
+  // The baseline load runs after this code compiles, so the class cannot be named directly.
+  assert.match(source, /\(Smalltalk globals at: #PIFSServer\)/);
+  assert.doesNotMatch(source, /^\(PIFSServer/m);
   assert.match(source, /mountAt: '\/project\/\.pharo-agent\/mounts\/dev' asFileReference/);
 });
 
@@ -206,4 +209,21 @@ test("an unrelated lifecycle error is left alone", async () => {
   const thrown = new Error("socket hang up");
   await assert.rejects(() => runLifecycle(() => Promise.reject(thrown), "fallback"), thrown);
   assert.deepEqual(await runLifecycle(() => Promise.resolve("ok"), "fallback"), "ok");
+});
+
+test("reads the evaluation result out of an MCP text content part", () => {
+  const envelope = {
+    content: [
+      {
+        type: "text",
+        text: JSON.stringify({
+          status: "ok",
+          data: { resultPrintString: "60974", resultClassName: "SmallInteger" },
+        }),
+      },
+    ],
+  };
+
+  assert.equal(resultPrintString(envelope), "60974");
+  assert.equal(resultPrintString({ content: [{ type: "text", text: "not json" }] }), undefined);
 });
