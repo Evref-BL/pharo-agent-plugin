@@ -1,6 +1,6 @@
 {
   "name": "@evref-bl/pharo-agent",
-  "version": "0.3.5",
+  "version": "0.3.6",
   "private": false,
   "description": "Terminal-first Pharo integration for coding agents.",
   "license": "Apache-2.0",
@@ -32,8 +32,8 @@
   },
   "dependencies": {
     "@evref-bl/pharo-mcp": "1.5.0",
-    "@evref-bl/plexus": "0.4.3",
-    "@evref-bl/plexus-gateway": "0.4.3",
+    "@evref-bl/plexus": "0.4.4",
+    "@evref-bl/plexus-gateway": "0.4.4",
     "@modelcontextprotocol/sdk": "1.32.1"
   }
 }
