@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -7,6 +8,7 @@ import { toolResult, withImageSelector } from "../src/gateway.js";
 import {
   describeLifecycleFailure,
   needsImageCreation,
+  fetchPifsRelease,
   pifsRelease,
   pifsStartCode,
   resultPrintString,
@@ -65,9 +67,6 @@ test("loads the released PIFS version and requests a dynamic projection port", (
   assert.match(pifsRelease, /^v\d+\.\d+\.\d+$/);
   assert.ok(source.includes(`pharo-image-fs:${pifsRelease}/src`));
   assert.match(source, /startOn: 0/);
-  // A shared clone made before this release would not resolve the tag otherwise.
-  assert.ok(source.includes(`(repository tags anySatisfy: [ :tag | tag name = '${pifsRelease}' ])`));
-  assert.match(source, /repository fetch/);
   // The baseline load runs after this code compiles, so the class cannot be named directly.
   assert.match(source, /\(Smalltalk globals at: #PIFSServer\)/);
   assert.doesNotMatch(source, /^\(PIFSServer/m);
@@ -230,4 +229,32 @@ test("reads the evaluation result out of an MCP text content part", () => {
 
   assert.equal(resultPrintString(envelope), "60974");
   assert.equal(resultPrintString({ content: [{ type: "text", text: "not json" }] }), undefined);
+});
+
+test("a shared clone missing the pinned release is fetched, once", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "pharo-agent-clone-"));
+  const origin = path.join(root, "origin");
+  const clone = path.join(root, "clone");
+  const git = (cwd, ...args) => execFileSync("git", ["-C", cwd, ...args], { stdio: "ignore" });
+  try {
+    fs.mkdirSync(origin);
+    git(origin, "init", "--quiet", "--initial-branch=main");
+    git(origin, "config", "user.email", "test@example.com");
+    git(origin, "config", "user.name", "test");
+    fs.writeFileSync(path.join(origin, "README.md"), "x\n");
+    git(origin, "add", ".");
+    git(origin, "commit", "--quiet", "-m", "first");
+    git(origin, "tag", "v0.1.0");
+
+    execFileSync("git", ["clone", "--quiet", origin, clone], { stdio: "ignore" });
+    // The release happens after the clone, exactly as it does in practice.
+    git(origin, "tag", "v0.2.0");
+
+    assert.equal(fetchPifsRelease(clone, "v0.1.0"), false, "already present, no fetch");
+    assert.equal(fetchPifsRelease(clone, "v0.2.0"), true, "missing, so fetched");
+    assert.equal(fetchPifsRelease(clone, "v0.2.0"), false, "present now, no second fetch");
+    assert.equal(fetchPifsRelease(path.join(root, "absent"), "v0.2.0"), false);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
 });

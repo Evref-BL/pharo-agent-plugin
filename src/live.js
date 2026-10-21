@@ -1,7 +1,15 @@
+import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
-import { ScopedPharoLauncher, closeProject, openProject } from "@evref-bl/plexus";
+import {
+  ScopedPharoLauncher,
+  closeProject,
+  homeDependencyRepositoryCachePath,
+  openProject,
+  resolvePlexusHomePath,
+} from "@evref-bl/plexus";
 import { callImageTool } from "./gateway.js";
+import { readProjectConfig } from "./project.js";
 import {
   defaultImageId,
   readConfig,
@@ -16,13 +24,7 @@ import {
 export const pifsRelease = "v0.4.1";
 
 export function pifsStartCode(mountPath, imageName) {
-  return `"A shared Iceberg clone is never refetched, so a tag released after it was cloned cannot resolve."
-IceRepository registry
-	detect: [ :each | each name = 'pharo-image-fs' ]
-	ifFound: [ :repository |
-		(repository tags anySatisfy: [ :tag | tag name = '${pifsRelease}' ])
-			ifFalse: [ [ repository fetch ] on: Error do: [ :error | "the load below reports the real failure" ] ] ].
-Metacello new
+  return `Metacello new
 	baseline: 'PharoImageFS';
 	repository: 'github://Evref-BL/pharo-image-fs:${pifsRelease}/src';
 	load: 'Core'.
@@ -85,12 +87,32 @@ export async function runLifecycle(action, fallback) {
   }
 }
 
+
+export function pifsCloneDirectory(projectRoot) {
+  const cache = homeDependencyRepositoryCachePath(
+    resolvePlexusHomePath({ config: readProjectConfig(projectRoot) }),
+  );
+  return path.join(cache, "Evref-BL", "pharo-image-fs");
+}
+
+export function fetchPifsRelease(cloneDirectory, release = pifsRelease) {
+  // The shared clone is reused as it was cloned, so a tag released later is
+  // missing. Fetch here rather than in the image: the clone may have an ssh
+  // remote, and only the host has the credentials for it.
+  if (!fs.existsSync(cloneDirectory)) return false;
+  const git = (...args) =>
+    spawnSync("git", ["-C", cloneDirectory, ...args], { stdio: "ignore" }).status === 0;
+  if (git("rev-parse", "--verify", `refs/tags/${release}`)) return false;
+  return git("fetch", "--tags", "--quiet", "origin");
+}
+
 export async function openAgentImage(projectRoot, imageId) {
   const resolved = resolveImageId(projectRoot, imageId);
   const openImages = readOpenImages(projectRoot);
   if (openImages[resolved]) {
     return { alreadyOpen: true, ...openImages[resolved] };
   }
+  fetchPifsRelease(pifsCloneDirectory(projectRoot));
   const launcher = new ScopedPharoLauncher({ projectRoot });
   const created = needsImageCreation(launcher.listImages(), resolved);
   if (created) {
