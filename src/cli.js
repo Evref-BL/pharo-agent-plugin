@@ -32,7 +32,7 @@ function parseImageAdd(args) {
     throw new Error("image add requires an image id");
   }
   const parsed = { id };
-  const options = { "--template": "template", "--category": "category", "--profile": "profile" };
+  const options = { "--template": "template", "--profile": "profile" };
   for (let index = 0; index < rest.length; index += 1) {
     const option = rest[index];
     const key = options[option];
@@ -67,7 +67,7 @@ function usage() {
     "Usage:",
     "  pharo-agent init --host <codex|claude|opencode> [--mount-root <path>]",
     "  pharo-agent image list",
-    "  pharo-agent image add <id> --template <name> [--category <name>] [--profile <id>]",
+    "  pharo-agent image add <id> --template <name> [--profile <id>]",
     "  pharo-agent image use <id>",
     "  pharo-agent image remove <id>",
     "  pharo-agent open [--image <id>]",

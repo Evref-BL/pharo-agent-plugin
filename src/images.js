@@ -37,7 +37,7 @@ export function listImages(projectRoot) {
   };
 }
 
-export function addImage(projectRoot, { id, template, category, profile }) {
+export function addImage(projectRoot, { id, template, profile }) {
   const config = readProjectConfig(projectRoot);
   const images = Array.isArray(config.images) ? config.images : [];
   if (images.some((image) => image.id === id)) {
@@ -57,7 +57,6 @@ export function addImage(projectRoot, { id, template, category, profile }) {
       kind: "template",
       ...(profile ? { profileId: profile } : {}),
       templateName: template,
-      ...(category ? { templateCategory: category } : {}),
       cleanupPolicy: "workspace_cleanup_only",
     },
   };

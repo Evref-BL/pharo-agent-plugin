@@ -9,7 +9,7 @@ import {
   resolvePlexusHomePath,
 } from "@evref-bl/plexus";
 import { callImageTool } from "./gateway.js";
-import { readProjectConfig } from "./project.js";
+import { readProjectConfig, writeProjectConfig } from "./project.js";
 import {
   defaultImageId,
   readConfig,
@@ -60,6 +60,48 @@ export function needsImageCreation(listed, imageId) {
   }
   // PLexus reports an image it has no runtime state for as declared.
   return summary.status === "declared";
+}
+
+// The launcher resolves a template name against its default group only, so an
+// image naming a template from any other group cannot be created until the
+// project config says which group that is. Find it once, on first creation.
+export async function resolveTemplateCategory(projectRoot, launcher, imageId) {
+  const config = readProjectConfig(projectRoot);
+  const images = Array.isArray(config.images) ? config.images : [];
+  const configured = images.find((image) => image.id === imageId);
+  const create = configured?.create;
+  if (!create?.templateName || create.templateCategory) {
+    return create?.templateCategory;
+  }
+
+  const listed = await launcher.listTemplates();
+  const templates = Array.isArray(listed?.templates) ? listed.templates : [];
+  const categories = [
+    ...new Set(
+      templates
+        .filter((template) => template?.name === create.templateName)
+        .map((template) => template?.templateCategory)
+        .filter(Boolean),
+    ),
+  ];
+  if (categories.length === 0) {
+    throw new Error(`No template named ${create.templateName} in any category.`);
+  }
+  if (categories.length > 1) {
+    throw new Error(
+      `Template ${create.templateName} exists in several categories: ${categories.join(", ")}.`
+      + ` Set create.templateCategory for image ${imageId} to choose one.`,
+    );
+  }
+
+  const [templateCategory] = categories;
+  writeProjectConfig(projectRoot, {
+    ...config,
+    images: images.map((image) => (image.id === imageId
+      ? { ...image, create: { ...image.create, templateCategory } }
+      : image)),
+  });
+  return templateCategory;
 }
 
 export function describeLifecycleFailure(failure) {
@@ -116,6 +158,7 @@ export async function openAgentImage(projectRoot, imageId) {
   const launcher = new ScopedPharoLauncher({ projectRoot });
   const created = needsImageCreation(launcher.listImages(), resolved);
   if (created) {
+    await resolveTemplateCategory(projectRoot, launcher, resolved);
     await launcher.createImage(resolved);
   }
   const opened = await runLifecycle(
