@@ -20,13 +20,21 @@ export function pifsStartCode(mountPath, imageName) {
 	baseline: 'PharoImageFS';
 	repository: 'github://Evref-BL/pharo-image-fs:${pifsRelease}/src';
 	load: 'Core'.
-(PIFSServer
+((Smalltalk globals at: #PIFSServer)
 	startOn: 0
 	mountAt: ${smalltalkString(mountPath)} asFileReference
 	named: ${smalltalkString(imageName)}) port`;
 }
 
 export function resultPrintString(result) {
+  // MCP tool results carry the image's answer as JSON inside a text content part.
+  if (typeof result === "string") {
+    try {
+      return resultPrintString(JSON.parse(result));
+    } catch {
+      return undefined;
+    }
+  }
   if (!result || typeof result !== "object") return undefined;
   if (typeof result.resultPrintString === "string") return result.resultPrintString;
   for (const value of Object.values(result)) {
@@ -100,7 +108,9 @@ export async function openAgentImage(projectRoot, imageId) {
   });
   const projectionPort = Number(resultPrintString(result));
   if (!Number.isInteger(projectionPort) || projectionPort < 1) {
-    throw new Error("PIFS started but did not report its projection port.");
+    throw new Error(
+      `PIFS did not report a projection port: ${JSON.stringify(result).slice(0, 500)}`,
+    );
   }
   writeOpenImages(projectRoot, { ...openImages, [resolved]: { ...open, projectionPort } });
   return { imageId: image.id, created, mountPath, projectionPort };
@@ -111,7 +121,7 @@ async function closeOneImage(projectRoot, openImages, imageId) {
   let projectionError;
   try {
     await callImageTool(projectRoot, open, "image_evaluate", {
-      code: `PIFSServer stopOn: ${open.projectionPort}`,
+      code: `(Smalltalk globals at: #PIFSServer) stopOn: ${open.projectionPort}`,
     });
   } catch (error) {
     projectionError = error;
