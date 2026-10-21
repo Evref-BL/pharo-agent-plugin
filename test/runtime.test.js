@@ -4,7 +4,14 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { toolResult, withImageSelector } from "../src/gateway.js";
-import { pifsRelease, pifsStartCode, resultPrintString } from "../src/live.js";
+import {
+  describeLifecycleFailure,
+  needsImageCreation,
+  pifsRelease,
+  pifsStartCode,
+  resultPrintString,
+  runLifecycle,
+} from "../src/live.js";
 import {
   activePath,
   readOpenImages,
@@ -136,4 +143,67 @@ test("an image tool result that is already an MCP result is passed through", () 
   const plain = toolResult({ resultPrintString: "42" });
   assert.equal(plain.content[0].type, "text");
   assert.match(plain.content[0].text, /resultPrintString/);
+});
+
+test("an image PLexus has no runtime state for needs creating", () => {
+  const listed = {
+    images: [
+      { imageId: "fresh", status: "declared" },
+      { imageId: "stopped", status: "stopped" },
+      { imageId: "live", status: "running" },
+    ],
+  };
+
+  assert.equal(needsImageCreation(listed, "fresh"), true);
+  assert.equal(needsImageCreation(listed, "stopped"), false);
+  assert.equal(needsImageCreation(listed, "live"), false);
+  assert.throws(() => needsImageCreation(listed, "other"), /does not know image other/);
+});
+
+test("a lifecycle failure reports the image, the remedy, and the launcher output", () => {
+  const described = describeLifecycleFailure({
+    imageId: "dev",
+    message: "pharo-launcher-mcp tool failed: pharo_launcher_image_launch",
+    diagnostic: "Profile-scoped image launch could not prepare the image.",
+    action: "Inspect image info before retrying the launch.",
+    launcherResult: { raw: { stderr: "  NotFound: Local image 'MyProject-dev' not found.\n" } },
+  });
+
+  assert.match(described, /^dev: pharo-launcher-mcp tool failed/);
+  assert.match(described, /Profile-scoped image launch could not prepare the image\./);
+  assert.match(described, /Inspect image info before retrying the launch\./);
+  assert.match(described, /launcher: NotFound: Local image 'MyProject-dev' not found\./);
+});
+
+test("a lifecycle failure without extra detail still names the image", () => {
+  assert.equal(
+    describeLifecycleFailure({ imageId: "dev", message: "boom" }),
+    "dev: boom",
+  );
+});
+
+test("a thrown lifecycle error is reported with its failures", async () => {
+  const thrown = Object.assign(new Error("One or more project images failed to open"), {
+    result: {
+      failures: [
+        { imageId: "dev", message: "launch failed", action: "Inspect image info." },
+      ],
+    },
+  });
+
+  await assert.rejects(
+    () => runLifecycle(() => Promise.reject(thrown), "PLexus could not open image dev."),
+    (error) => {
+      assert.match(error.message, /PLexus could not open image dev\./);
+      assert.match(error.message, /dev: launch failed/);
+      assert.match(error.message, /Inspect image info\./);
+      return true;
+    },
+  );
+});
+
+test("an unrelated lifecycle error is left alone", async () => {
+  const thrown = new Error("socket hang up");
+  await assert.rejects(() => runLifecycle(() => Promise.reject(thrown), "fallback"), thrown);
+  assert.deepEqual(await runLifecycle(() => Promise.resolve("ok"), "fallback"), "ok");
 });
