@@ -94,6 +94,8 @@ jobs:
           token: ${{ steps.app-token.outputs.token }}
           branch: automation/update-plexus-v${{ steps.release.outputs.plexus_version }}
           delete-branch: true
+          committer: github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>
+          author: github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>
           commit-message: "chore: pin PLexus v${{ steps.release.outputs.plexus_version }} and MCP v${{ steps.release.outputs.mcp_version }}"
           title: "chore: pin PLexus v${{ steps.release.outputs.plexus_version }} and MCP v${{ steps.release.outputs.mcp_version }}"
           body: |

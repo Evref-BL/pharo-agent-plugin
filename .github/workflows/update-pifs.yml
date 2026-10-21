@@ -1,0 +1,108 @@
+name: Apply PIFS release
+
+on:
+  repository_dispatch:
+    types: [component-release]
+  workflow_dispatch:
+    inputs:
+      pifs_version:
+        description: Published pharo-image-fs version to apply.
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  update:
+    if: github.event_name == 'workflow_dispatch' || github.event.client_payload.component == 'pifs'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      PIFS_REPOSITORY: Evref-BL/pharo-image-fs
+      DAEMON_REPOSITORY: Evref-BL/pharo-image-fs-daemon
+    steps:
+      - uses: actions/create-github-app-token@v2
+        id: app-token
+        with:
+          app-id: ${{ secrets.DEVNEXUS_AUTOMATION_APP_ID }}
+          private-key: ${{ secrets.DEVNEXUS_AUTOMATION_PRIVATE_KEY }}
+          owner: Evref-BL
+          repositories: pharo-agent-plugin
+
+      - uses: actions/checkout@v6
+        with:
+          token: ${{ steps.app-token.outputs.token }}
+
+      - name: Verify the published PIFS release
+        id: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT_PIFS_VERSION: ${{ github.event.client_payload.version }}
+          INPUT_PIFS_VERSION: ${{ inputs.pifs_version }}
+        run: |
+          version="${EVENT_PIFS_VERSION:-$INPUT_PIFS_VERSION}"
+          version="${version#v}"
+          [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          gh release view "v$version" --repo "$PIFS_REPOSITORY" --json tagName --jq .tagName
+
+          # The image downloads the daemon for this exact version, so refuse a
+          # release whose daemon assets are missing.
+          assets="$(gh release view "v$version" --repo "$DAEMON_REPOSITORY" --json assets --jq '[.assets[].name] | sort | join(",")' 2>/dev/null || true)"
+          expected="pharo-image-fs-daemon-darwin-amd64.zip,pharo-image-fs-daemon-darwin-arm64.zip"
+          if [ "$assets" != "$expected" ]; then
+            echo "$DAEMON_REPOSITORY v$version must publish $expected, found: ${assets:-<no release>}" >&2
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Prepare the update
+        id: update
+        env:
+          PIFS_VERSION: ${{ steps.release.outputs.version }}
+        run: |
+          pin_file="src/live.js"
+          current="$(sed -nE 's/^export const pifsRelease = "v([0-9]+\.[0-9]+\.[0-9]+)";$/\1/p' "$pin_file")"
+          test -n "$current"
+          if [[ "$current" == "$PIFS_VERSION" ]]; then
+            exit 0
+          fi
+          sed -i -E "s/(^export const pifsRelease = \"v)[0-9]+\.[0-9]+\.[0-9]+/\1${PIFS_VERSION}/" "$pin_file"
+          npm ci
+          npm test
+          npm run check
+          echo "needed=true" >> "$GITHUB_OUTPUT"
+
+      - name: Create update pull request
+        id: proposal
+        if: steps.update.outputs.needed == 'true'
+        uses: peter-evans/create-pull-request@v7
+        with:
+          token: ${{ steps.app-token.outputs.token }}
+          branch: automation/update-pifs-v${{ steps.release.outputs.version }}
+          delete-branch: true
+          committer: github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>
+          author: github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>
+          commit-message: "chore: pin PIFS v${{ steps.release.outputs.version }}"
+          title: "chore: pin PIFS v${{ steps.release.outputs.version }}"
+          body: |
+            Automated update for the published pharo-image-fs release.
+
+            This only moves the pin. Releasing it is a separate version bump.
+
+      - name: Merge after CI
+        if: steps.proposal.outputs.pull-request-number != ''
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          PR_NUMBER: ${{ steps.proposal.outputs.pull-request-number }}
+        run: |
+          for _ in {1..60}; do
+            if gh pr checks "$PR_NUMBER" --json name --jq 'length' 2>/dev/null | grep -qx '[1-9][0-9]*'; then
+              gh pr checks "$PR_NUMBER" --watch --interval 10
+              gh pr merge "$PR_NUMBER" --squash --delete-branch
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "No CI checks were reported for PR #$PR_NUMBER."
+          exit 1
