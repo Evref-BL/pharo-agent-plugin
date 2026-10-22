@@ -19,13 +19,14 @@ const hostGuide = {
 };
 
 function copyDirectory(source, target) {
-  fs.mkdirSync(target, { recursive: true });
   for (const entry of fs.readdirSync(source, { withFileTypes: true })) {
     const sourcePath = path.join(source, entry.name);
     const targetPath = path.join(target, entry.name);
+    if (sourcePath.endsWith(`${path.sep}agents${path.sep}openai.yaml`)) continue;
     if (entry.isDirectory()) {
       copyDirectory(sourcePath, targetPath);
     } else {
+      fs.mkdirSync(target, { recursive: true });
       fs.copyFileSync(sourcePath, targetPath);
     }
   }

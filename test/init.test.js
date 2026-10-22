@@ -7,6 +7,22 @@ import { templateDirectory as mcpTemplateDirectory } from "@evref-bl/pharo-mcp";
 import { initialize } from "../src/init.js";
 import { main } from "../src/cli.js";
 
+for (const host of ["codex", "claude", "opencode"]) {
+  test(`init omits host-discovery metadata for ${host}'s soft-loaded skills`, () => {
+    const root = temporaryProject();
+    try {
+      initialize({ host, cwd: root });
+      const skills = path.join(root, ".pharo-agent", "skills");
+      for (const skill of fs.readdirSync(skills)) {
+        assert.ok(fs.existsSync(path.join(skills, skill, "SKILL.md")));
+        assert.equal(fs.existsSync(path.join(skills, skill, "agents")), false);
+      }
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
+}
+
 function temporaryDirectory() {
   return fs.mkdtempSync(path.join(os.tmpdir(), "pharo-agent-"));
 }
