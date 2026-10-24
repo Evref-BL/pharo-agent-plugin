@@ -8,7 +8,7 @@ Run this only when the user asks to enable Pharo tooling in this project.
 From the project root, run the released CLI that matches this plugin:
 
 ```sh
-npx --yes @evref-bl/pharo-agent@0.3.10 init --host codex
+npx --yes @evref-bl/pharo-agent@0.4.0 init --host codex
 ```
 
 Use `--host claude` in Claude Code and `--host opencode` in OpenCode.
