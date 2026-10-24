@@ -10,10 +10,13 @@ import {
   needsImageCreation,
   fetchPifsRelease,
   pifsRelease,
+  pifsSelectors,
   pifsStartCode,
+  pifsStopCode,
   resultPrintString,
   runLifecycle,
 } from "../src/live.js";
+import { classSideSelectors, missingSelectors } from "../scripts/check-pifs-selectors.mjs";
 import {
   activePath,
   readOpenImages,
@@ -61,16 +64,44 @@ test("reads the MCP evaluation preview through its result envelope", () => {
   );
 });
 
-test("loads the released PIFS version and requests a dynamic projection port", () => {
+test("loads the released PIFS version and lets the image allocate the port", () => {
   const source = pifsStartCode("/project/.pharo-agent/mounts/dev", "Project-dev");
   // Follow the pin rather than repeating it, so an automated bump stays green.
   assert.match(pifsRelease, /^v\d+\.\d+\.\d+$/);
   assert.ok(source.includes(`pharo-image-fs:${pifsRelease}/src`));
-  assert.match(source, /startOn: 0/);
   // The baseline load runs after this code compiles, so the class cannot be named directly.
   assert.match(source, /\(Smalltalk globals at: #PIFSServer\)/);
   assert.doesNotMatch(source, /^\(PIFSServer/m);
-  assert.match(source, /mountAt: '\/project\/\.pharo-agent\/mounts\/dev' asFileReference/);
+  assert.match(source, /startMountedAt: '\/project\/\.pharo-agent\/mounts\/dev' asFileReference/);
+  assert.match(source, /named: 'Project-dev'/);
+});
+
+test("the declared PIFS selectors are the ones the generated sources send", () => {
+  const sources = [pifsStartCode("/mounts/dev", "dev"), pifsStopCode(9013)].join("\n");
+  for (const selector of pifsSelectors) {
+    for (const keyword of selector.match(/[A-Za-z0-9_]+:/g) ?? [selector]) {
+      assert.ok(
+        sources.includes(keyword),
+        `${selector} is declared but ${keyword} is never sent`,
+      );
+    }
+  }
+});
+
+test("a removed selector is reported against a released PIFSServer", () => {
+  const released = [
+    "PIFSServer class >> start [",
+    "PIFSServer class >> startMountedAt: aPath named: aString [",
+    "PIFSServer class >> stopOn: portNumber [",
+  ].join("\n");
+  assert.deepEqual(missingSelectors(released), []);
+  assert.deepEqual(missingSelectors(released, ["startOn:mountAt:named:"]), [
+    "startOn:mountAt:named:",
+  ]);
+  assert.deepEqual(
+    [...classSideSelectors(released)].sort(),
+    ["start", "startMountedAt:named:", "stopOn:"],
+  );
 });
 
 test("selectRunningImage picks the named image out of several", () => {

@@ -73,6 +73,20 @@ jobs:
           npm run check
           echo "needed=true" >> "$GITHUB_OUTPUT"
 
+      - name: Check the plugin's PIFS selectors still exist
+        if: steps.update.outputs.needed == 'true'
+        env:
+          PIFS_VERSION: ${{ steps.release.outputs.version }}
+        run: |
+          # A pin bump never changes the Smalltalk this plugin generates, so the
+          # tests stay green even when the release removed a selector it sends.
+          # Fail here instead of opening a pull request that only breaks once an
+          # image tries to start a projection.
+          curl -fsSL \
+            "https://raw.githubusercontent.com/$PIFS_REPOSITORY/v$PIFS_VERSION/src/PharoImageFS/PIFSServer.class.st" \
+            -o "$RUNNER_TEMP/PIFSServer.class.st"
+          node scripts/check-pifs-selectors.mjs "$RUNNER_TEMP/PIFSServer.class.st"
+
       - name: Create update pull request
         id: proposal
         if: steps.update.outputs.needed == 'true'
