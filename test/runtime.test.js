@@ -298,7 +298,7 @@ test("an unsupported Pharo version is explained, not just counted", () => {
         status: "running",
         pharoMcpContract: {
           status: "unsupported",
-          reason: "Pharo 15 is outside the supported Pharo MCP range (12, 13, 14).",
+          reason: "Pharo 11 is outside the supported Pharo MCP range (12, 13, 14, 15).",
         },
       },
     ],
@@ -306,7 +306,7 @@ test("an unsupported Pharo version is explained, not just counted", () => {
 
   assert.throws(
     () => selectRunningImage(state, "dev"),
-    /needs exactly one MCP endpoint; PLexus reported 0\. Pharo 15 is outside the supported Pharo MCP range/,
+    /needs exactly one MCP endpoint; PLexus reported 0\. Pharo 11 is outside the supported Pharo MCP range/,
   );
 });
 
