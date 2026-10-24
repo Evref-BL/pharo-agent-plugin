@@ -21,7 +21,7 @@ import {
   writeOpenImages,
 } from "./runtime.js";
 
-export const pifsRelease = "v0.4.1";
+export const pifsRelease = "v0.5.1";
 
 export function pifsStartCode(mountPath, imageName) {
   return `Metacello new
