@@ -146,6 +146,9 @@ export async function main(args) {
   }
   if (command === "status") {
     requireNoArguments(command, commandArgs);
+    if (image) {
+      throw new Error("status reports every open image and does not accept --image");
+    }
     console.log(JSON.stringify({ ok: true, ...agentImageStatus(projectRoot) }, null, 2));
     return;
   }
