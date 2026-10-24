@@ -26,26 +26,31 @@ pharo-agent image add dev --template 'Pharo 13.0 - 64bit (stable)'
 ```
 
 `image add` registers a template-created image with the pinned MCP load policy,
-and the first one registered becomes the default. `image list`,
-`image use <id>` (change the default) and `image remove <id>` cover the rest;
-an open image must be closed before its declaration is removed.
+and the first one registered becomes the default. Pass `--profile <id>` to put
+it under a particular launcher profile. `image list`, `image use <id>` (change
+the default) and `image remove <id>` cover the rest; an open image must be
+closed before its declaration is removed.
 
 `open` starts an image through PLexus, loads PIFS, and mounts its projection
 below `.pharo-agent/mounts`. `close` unmounts the projection and closes the
-PLexus image. `pharo` calls any exposed MCP tool through the same project
-route, while `mcp` exposes that tool surface as a command-scoped stdio MCP
+PLexus image. `pharo <tool> [arguments-json]` calls any exposed MCP tool
+through the same project route and `pharo list` names the tools an image
+offers, while `mcp` exposes that tool surface as a command-scoped stdio MCP
 server.
 
-Several images can be open at once. `open`, `close`, `status`, `pharo` and
-`mcp` all accept `--image <id>`; without it the default image answers, so a
-project with one image never mentions an image at all. `open --image <id>`
-adds an image without closing the others, and `close` without `--image` closes
-every image this project opened. Over `mcp`, each Pharo tool takes the same
-optional `image` argument.
+Several images can be open at once. `open`, `close`, `pharo` and `mcp` accept
+`--image <id>`; without it the default image answers, so a project with one
+image never mentions an image at all. `open --image <id>` adds an image
+without closing the others, and `close` without `--image` closes every image
+this project opened. `status` takes no `--image`, because it reports every
+open image and which one is the default. Over `mcp`, each Pharo tool takes the
+same optional `image` argument.
 
 Pass `--mount-root <path>` to `init` to use a different projection root.
 
 ## Requirements
+
+Node 22.12 or later.
 
 PIFS currently supports the macOS workflow and needs
 [fuse-t](https://www.fuse-t.org/). Its matching daemon is downloaded by PIFS;

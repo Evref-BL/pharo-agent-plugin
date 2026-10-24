@@ -1,0 +1,33 @@
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import test from "node:test";
+import { main } from "../src/cli.js";
+
+function temporaryProject() {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "pharo-agent-cli-"));
+  fs.writeFileSync(path.join(root, "plexus.json"), `${JSON.stringify({ images: [] })}\n`);
+  return root;
+}
+
+async function inProject(run) {
+  const root = temporaryProject();
+  const previous = process.cwd();
+  try {
+    process.chdir(root);
+    await run(root);
+  } finally {
+    process.chdir(previous);
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+}
+
+test("status refuses --image instead of ignoring it", async () => {
+  await inProject(async () => {
+    await assert.rejects(
+      () => main(["status", "--image", "dev"]),
+      /status reports every open image and does not accept --image/,
+    );
+  });
+});
