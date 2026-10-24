@@ -21,7 +21,13 @@ import {
   writeOpenImages,
 } from "./runtime.js";
 
-export const pifsRelease = "v0.4.1";
+export const pifsRelease = "v0.6.0";
+
+// The class-side PIFSServer messages this plugin sends into the image. The
+// release automation checks that a published PIFS still implements them: a pin
+// bump that leaves a removed selector in place passes every test here, because
+// the tests read generated source, and fails only in a live image.
+export const pifsSelectors = ["startMountedAt:named:", "stopOn:"];
 
 export function pifsStartCode(mountPath, imageName) {
   return `Metacello new
@@ -29,9 +35,12 @@ export function pifsStartCode(mountPath, imageName) {
 	repository: 'github://Evref-BL/pharo-image-fs:${pifsRelease}/src';
 	load: 'Core'.
 ((Smalltalk globals at: #PIFSServer)
-	startOn: 0
-	mountAt: ${smalltalkString(mountPath)} asFileReference
+	startMountedAt: ${smalltalkString(mountPath)} asFileReference
 	named: ${smalltalkString(imageName)}) port`;
+}
+
+export function pifsStopCode(projectionPort) {
+  return `(Smalltalk globals at: #PIFSServer) stopOn: ${projectionPort}`;
 }
 
 export function resultPrintString(result) {
@@ -200,7 +209,7 @@ async function closeOneImage(projectRoot, openImages, imageId) {
   let projectionError;
   try {
     await callImageTool(projectRoot, open, "image_evaluate", {
-      code: `(Smalltalk globals at: #PIFSServer) stopOn: ${open.projectionPort}`,
+      code: pifsStopCode(open.projectionPort),
     });
   } catch (error) {
     projectionError = error;
