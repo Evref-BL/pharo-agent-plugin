@@ -37,6 +37,9 @@ Every tool the image holds is called the same way, whether or not `pharo list`
 names it. `tool_call` is there for a client that will only send a name from
 its own list; a terminal is not one.
 
+A tool that fails prints its error and exits nonzero, so a script may test the
+status rather than read the JSON.
+
 ## As an MCP server
 
 ```sh
