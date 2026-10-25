@@ -131,6 +131,18 @@ export function selectRunningImage(state, imageId) {
   return { image, mcpServerId: image.mcpServers[0].id };
 }
 
+// `mcp.loadPolicy` defaults to ifMissing, so an image that already carries a
+// Pharo MCP keeps it and the version this project pins is never loaded. That
+// is a supported way to run — it is what the policy is for — but nothing said
+// so, and the image's tools then quietly differ from the ones the project was
+// written against. PLexus records it; this says it.
+export function unappliedPharoMcpPin(image) {
+  if (image?.pharoMcpLoad?.state !== "provided") return undefined;
+  return `Image ${image.id} opened with the Pharo MCP it already had, so the version this project pins`
+    + " was not loaded and its tools may differ from the ones this project expects."
+    + " Recreate the image, or set mcp.loadPolicy to always.";
+}
+
 export function smalltalkString(value) {
   return `'${String(value).replaceAll("'", "''")}'`;
 }

@@ -50,6 +50,24 @@ support a range of versions, and an image outside it still opens:
 The image runs, and is yours to drive another way. It offers no Pharo tools
 and no source projection, and a tool call against it says so.
 
+## An image that brought its own MCP
+
+An image that already carries a Pharo MCP keeps it: `mcp.loadPolicy` defaults
+to `ifMissing`, so the version the project pins is not loaded over one that is
+already there. That is what the policy is for, and the image works, but its
+tools are whatever that MCP has rather than what this project was written
+against. `open` says so:
+
+```json
+{ "ok": true, "imageId": "p13",
+  "warning": "Image p13 opened with the Pharo MCP it already had, ..." }
+```
+
+A `-32601` from such an image repeats the warning: a tool that is plainly in
+the catalogue, and answers that it does not exist, is otherwise a puzzle.
+Recreate the image to pick the pinned version up, or set `mcp.loadPolicy` to
+`always` in `plexus.json` to load it on every open.
+
 ## Where things live
 
 `.pharo-agent/mounts` holds the projections, `.pharo-agent/runtime` the state
