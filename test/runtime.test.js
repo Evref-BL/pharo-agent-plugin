@@ -4,7 +4,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { toolResult, withImageSelector } from "../src/gateway.js";
+import { toolFailureMessage, toolResult, withImageSelector } from "../src/gateway.js";
 import {
   describeLifecycleFailure,
   imageCreationPlan,
@@ -24,6 +24,7 @@ import {
   readOpenImages,
   selectRunningImage,
   smalltalkString,
+  unappliedPharoMcpPin,
   writeOpenImages,
 } from "../src/runtime.js";
 
@@ -370,4 +371,44 @@ test("a tool call against an image opened without MCP is refused with the reason
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }
+});
+
+test("an image that kept its own Pharo MCP says the pin was not applied", () => {
+  const warning = unappliedPharoMcpPin({
+    id: "p13",
+    pharoMcpLoad: { state: "provided", loadPolicy: "ifMissing" },
+  });
+
+  assert.match(warning, /^Image p13 opened with the Pharo MCP it already had/);
+  assert.match(warning, /mcp\.loadPolicy to always/);
+});
+
+test("an image that loaded the pinned Pharo MCP says nothing", () => {
+  assert.equal(
+    unappliedPharoMcpPin({ id: "p14", pharoMcpLoad: { state: "loaded" } }),
+    undefined,
+  );
+  assert.equal(unappliedPharoMcpPin({ id: "p14" }), undefined);
+  assert.equal(unappliedPharoMcpPin(undefined), undefined);
+});
+
+test("a tool the image says it does not have names the unapplied pin", () => {
+  const message = toolFailureMessage(
+    "MCP error -32601: The method does not exist / is not available.",
+    { id: "p13", pharoMcpLoad: { state: "provided" } },
+  );
+
+  assert.match(message, /-32601/);
+  assert.match(message, /opened with the Pharo MCP it already had/);
+});
+
+test("an unrelated failure is reported as it is", () => {
+  assert.equal(
+    toolFailureMessage("ZeroDivide", { id: "p13", pharoMcpLoad: { state: "provided" } }),
+    "ZeroDivide",
+  );
+  assert.equal(
+    toolFailureMessage("MCP error -32601: nope.", { id: "p14", pharoMcpLoad: { state: "loaded" } }),
+    "MCP error -32601: nope.",
+  );
 });

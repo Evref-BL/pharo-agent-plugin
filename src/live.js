@@ -18,6 +18,7 @@ import {
   resolveMountPath,
   selectRunningImage,
   smalltalkString,
+  unappliedPharoMcpPin,
   writeOpenImages,
 } from "./runtime.js";
 
@@ -238,7 +239,14 @@ export async function openAgentImage(projectRoot, imageId) {
     throw error;
   }
   writeOpenImages(projectRoot, { ...openImages, [resolved]: { ...open, projectionPort } });
-  return { imageId: image.id, created, mountPath, projectionPort };
+  const unappliedPin = unappliedPharoMcpPin(image);
+  return {
+    imageId: image.id,
+    created,
+    mountPath,
+    projectionPort,
+    ...(unappliedPin ? { warning: unappliedPin } : {}),
+  };
 }
 
 function unsupportedRunningImage(state, imageId) {
