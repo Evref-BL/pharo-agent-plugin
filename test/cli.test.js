@@ -3,7 +3,9 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { main } from "../src/cli.js";
+import { spawnSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
+import { exitCodeForToolResult, main } from "../src/cli.js";
 
 function temporaryProject() {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "pharo-agent-cli-"));
@@ -53,4 +55,22 @@ test("the bundle reports the published version, not a placeholder", async () => 
 
   assert.equal(version, published);
   assert.notEqual(version, "0.0.0");
+});
+
+test("a tool answering with an error fails the command", () => {
+  const failed = {
+    content: [{ type: "text", text: "ZeroDivide: attempt to divide by zero" }],
+    isError: true,
+  };
+
+  assert.equal(exitCodeForToolResult(failed), 1);
+  assert.equal(exitCodeForToolResult({ content: [{ type: "text", text: "3" }] }), 0);
+  assert.equal(exitCodeForToolResult({}), 0);
+});
+
+test("the executable reports what main answers", () => {
+  const binary = fileURLToPath(new URL("../bin/pharo-agent.js", import.meta.url));
+
+  assert.equal(spawnSync(process.execPath, [binary, "--help"]).status, 0);
+  assert.equal(spawnSync(process.execPath, [binary, "nonsense"]).status, 1);
 });

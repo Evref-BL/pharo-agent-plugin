@@ -110,6 +110,14 @@ function parseToolArguments(value) {
   return parsed;
 }
 
+// A tool the image answered with an error is still an answer: the MCP result
+// carries the Pharo exception, and a caller wants to read it. Print it as
+// always, and report the failure in the exit status too, so `set -e` and
+// subprocess.run(check=True) do not read a failed load as a success.
+export function exitCodeForToolResult(result) {
+  return result?.isError === true ? 1 : 0;
+}
+
 export async function main(args) {
   const [command, ...rest] = args;
   if (command === "init") {
@@ -194,13 +202,14 @@ export async function main(args) {
     if (!toolName || extra.length > 0) {
       throw new Error("pharo requires one tool name and an optional JSON object");
     }
-    console.log(JSON.stringify(await callImageTool(
+    const result = await callImageTool(
       projectRoot,
       readOpenImage(projectRoot, image),
       toolName,
       parseToolArguments(argumentsJson),
-    ), null, 2));
-    return;
+    );
+    console.log(JSON.stringify(result, null, 2));
+    return exitCodeForToolResult(result);
   }
   throw new Error(`Unsupported command: ${command}\n${usage()}`);
 }
