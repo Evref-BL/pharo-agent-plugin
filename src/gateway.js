@@ -37,17 +37,39 @@ export async function imageGateway(projectRoot, open) {
   return { gateway, mcpServerId };
 }
 
+const catalogueDispatcher = "tool_call";
+const methodNotFound = "-32601";
+
+// An image resolves tools/call against its registry from Pharo MCP 2.1.0 on;
+// before that it resolved against the advertised list, so a tool the image
+// holds but does not advertise answered -32601. The project contract accepts
+// any image on the same major version, so those images are supported ones,
+// and tool_call reaches the tool there. Retry through it rather than let the
+// documented command be a lie on an image we accept.
+export async function callToolThroughGateway(call, toolName, argumentsValue) {
+  const result = await call(toolName, argumentsValue);
+  if (result.ok) {
+    return result.data;
+  }
+  if (toolName !== catalogueDispatcher && (result.error ?? "").includes(methodNotFound)) {
+    const dispatched = await call(catalogueDispatcher, {
+      name: toolName,
+      arguments: argumentsValue,
+    });
+    if (dispatched.ok) {
+      return dispatched.data;
+    }
+  }
+  throw new Error(result.error ?? `Pharo tool ${toolName} failed.`);
+}
+
 export async function callImageTool(projectRoot, open, toolName, argumentsValue) {
   const { gateway, mcpServerId } = await imageGateway(projectRoot, open);
-  const result = await gateway.routeToImage({
-    mcpServerId,
+  return callToolThroughGateway(
+    (name, args) => gateway.routeToImage({ mcpServerId, toolName: name, arguments: args }),
     toolName,
-    arguments: argumentsValue,
-  });
-  if (!result.ok) {
-    throw new Error(result.error ?? `Pharo tool ${toolName} failed.`);
-  }
-  return result.data;
+    argumentsValue,
+  );
 }
 
 export async function listImageTools(projectRoot, open) {

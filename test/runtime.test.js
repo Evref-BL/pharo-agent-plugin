@@ -4,7 +4,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { toolResult, withImageSelector } from "../src/gateway.js";
+import { callToolThroughGateway, toolResult, withImageSelector } from "../src/gateway.js";
 import {
   describeLifecycleFailure,
   imageCreationPlan,
@@ -370,4 +370,68 @@ test("a tool call against an image opened without MCP is refused with the reason
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }
+});
+
+function recordingGateway(answers) {
+  const calls = [];
+  const call = async (toolName, argumentsValue) => {
+    calls.push({ toolName, argumentsValue });
+    return answers.shift();
+  };
+  return { call, calls };
+}
+
+test("a tool the image answers is returned as it is", async () => {
+  const { call, calls } = recordingGateway([{ ok: true, data: { content: [] } }]);
+
+  assert.deepEqual(
+    await callToolThroughGateway(call, "class_search", { name: "Point" }),
+    { content: [] },
+  );
+  assert.deepEqual(calls, [{ toolName: "class_search", argumentsValue: { name: "Point" } }]);
+});
+
+test("an older image that refuses a tool it holds is asked through the catalogue", async () => {
+  const { call, calls } = recordingGateway([
+    { ok: false, error: "MCP error -32601: The method does not exist / is not available." },
+    { ok: true, data: "attached" },
+  ]);
+
+  assert.equal(
+    await callToolThroughGateway(call, "repository_attach", { name: "Example" }),
+    "attached",
+  );
+  assert.deepEqual(calls[1], {
+    toolName: "tool_call",
+    argumentsValue: { name: "repository_attach", arguments: { name: "Example" } },
+  });
+});
+
+test("a tool nothing holds reports what the image said, not what the retry said", async () => {
+  const { call, calls } = recordingGateway([
+    { ok: false, error: "MCP error -32601: The method does not exist / is not available." },
+    { ok: false, error: "No tool named nonsense_tool." },
+  ]);
+
+  await assert.rejects(
+    () => callToolThroughGateway(call, "nonsense_tool", {}),
+    /-32601/,
+  );
+  assert.equal(calls.length, 2);
+});
+
+test("a failure that is not a missing method is not retried", async () => {
+  const { call, calls } = recordingGateway([{ ok: false, error: "ZeroDivide" }]);
+
+  await assert.rejects(() => callToolThroughGateway(call, "image_evaluate", {}), /ZeroDivide/);
+  assert.equal(calls.length, 1);
+});
+
+test("the catalogue dispatcher is never asked to dispatch itself", async () => {
+  const { call, calls } = recordingGateway([
+    { ok: false, error: "MCP error -32601: The method does not exist / is not available." },
+  ]);
+
+  await assert.rejects(() => callToolThroughGateway(call, "tool_call", {}), /-32601/);
+  assert.equal(calls.length, 1);
 });
