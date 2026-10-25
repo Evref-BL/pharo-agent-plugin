@@ -8,7 +8,7 @@ Run this only when the user asks to enable Pharo tooling in this project.
 From the project root, run the released CLI that matches this plugin:
 
 ```sh
-npx --yes @evref-bl/pharo-agent@0.5.0 init --host claude
+npx --yes @evref-bl/pharo-agent@0.5.1 init --host claude
 ```
 
 Name the host this chat runs in: `--host claude` in Claude Code,
