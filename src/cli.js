@@ -116,7 +116,10 @@ export async function main(args) {
     console.log(JSON.stringify({ ok: true, ...result }, null, 2));
     return;
   }
-  if (!command || command === "--help" || command === "help") {
+  // A caller reaching for help is asking the same question wherever the word
+  // lands, and `image add --help` answering that it needs an image id is no
+  // answer at all.
+  if (!command || args.some((value) => value === "--help" || value === "help")) {
     console.log(usage());
     return;
   }

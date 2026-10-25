@@ -31,3 +31,16 @@ test("status refuses --image instead of ignoring it", async () => {
     );
   });
 });
+
+test("help is answered wherever the word lands", async () => {
+  const lines = [];
+  const log = console.log;
+  console.log = (value) => lines.push(value);
+  try {
+    await main(["image", "add", "--help"]);
+  } finally {
+    console.log = log;
+  }
+
+  assert.match(lines.join("\n"), /pharo-agent image add <id> --template/);
+});
