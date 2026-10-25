@@ -30,11 +30,12 @@ the schema before calling anything less common.
 
 ```sh
 pharo-agent pharo class_search '{"name":"Point"}'
-pharo-agent pharo tool_call '{"name":"package_search","arguments":{"name":"MCP"}}'
+pharo-agent pharo package_search '{"name":"MCP"}'
 ```
 
-A tool `pharo list` names is called directly. One found through the catalogue
-is called through `tool_call`, which takes the tool's own arguments nested.
+Every tool the image holds is called the same way, whether or not `pharo list`
+names it. `tool_call` is there for a client that will only send a name from
+its own list; a terminal is not one.
 
 ## As an MCP server
 

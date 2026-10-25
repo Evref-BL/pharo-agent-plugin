@@ -100,17 +100,14 @@ Use \`pharo-agent open\` before live-image work and edit projected source under
 image as a command-scoped stdio MCP server.
 
 \`pharo-agent pharo list\` names the tools the image advertises, which are the
-common ones rather than all of it. The rest are reached through the catalogue,
-and this is how to find a tool rather than guess at one:
+common ones rather than all of it. Find the rest through the catalogue rather
+than guessing at a name, then call one the same way as any other:
 
 \`\`\`sh
 pharo-agent pharo tool_search '{"query":"repository commit"}'
 pharo-agent pharo tool_get '{"name":"repository_commit"}'
-pharo-agent pharo tool_call '{"name":"repository_commit","arguments":{}}'
+pharo-agent pharo repository_commit '{"name":"MCP","message":"..."}'
 \`\`\`
-
-A tool \`pharo list\` names is called directly; one found through the catalogue
-is called through \`tool_call\`, which takes the tool's own arguments nested.
 
 Several images can be open at once. Every image-facing command takes
 \`--image <id>\`; without it the default image answers. \`pharo-agent open
