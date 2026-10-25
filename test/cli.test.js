@@ -44,3 +44,13 @@ test("help is answered wherever the word lands", async () => {
 
   assert.match(lines.join("\n"), /pharo-agent image add <id> --template/);
 });
+
+test("the bundle reports the published version, not a placeholder", async () => {
+  const { version } = await import("../src/gateway.js");
+  const published = JSON.parse(
+    fs.readFileSync(new URL("../package.json", import.meta.url), "utf8"),
+  ).version;
+
+  assert.equal(version, published);
+  assert.notEqual(version, "0.0.0");
+});
