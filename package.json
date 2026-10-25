@@ -32,8 +32,8 @@
   },
   "dependencies": {
     "@evref-bl/pharo-mcp": "2.1.0",
-    "@evref-bl/plexus": "0.5.2",
-    "@evref-bl/plexus-gateway": "0.5.2",
+    "@evref-bl/plexus": "0.5.3",
+    "@evref-bl/plexus-gateway": "0.5.3",
     "@modelcontextprotocol/sdk": "1.32.1"
   }
 }
