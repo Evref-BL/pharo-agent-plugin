@@ -19,17 +19,23 @@ directory has no `plexus.json`, it creates one that declares the
 project and no image; an existing one is left untouched. It refuses to run
 inside an enclosing PLexus project rather than initializing that project root.
 
-Register the image the project needs before the first `open`:
+`image templates` names the templates the launcher offers, with the category of
+each. Register the image the project needs before the first `open`:
 
 ```sh
 pharo-agent image add dev --template 'Pharo 13.0 - 64bit (stable)'
 ```
 
 `image add` registers a template-created image with the pinned MCP load policy,
-and the first one registered becomes the default. Pass `--profile <id>` to put
-it under a particular launcher profile. `image list`, `image use <id>` (change
-the default) and `image remove <id>` cover the rest; an open image must be
-closed before its declaration is removed.
+and the first one registered becomes the default. A template name that several
+categories offer needs `--category <name>`, which `image templates` flags. Pass
+`--profile <id>` to put it under a particular launcher profile. `image list`,
+`image use <id>` (change the default) and `image remove <id>` cover the rest; an
+open image must be closed before its declaration is removed.
+
+Any Pharo version the launcher offers can be registered. MCP and PIFS support a
+range of versions, and an image outside it opens without them: `open` says which
+tools are missing and why, and the image is yours to drive another way.
 
 `open` starts an image through PLexus, loads PIFS, and mounts its projection
 below `.pharo-agent/mounts`. `close` unmounts the projection and closes the

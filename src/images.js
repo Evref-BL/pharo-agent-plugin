@@ -37,7 +37,7 @@ export function listImages(projectRoot) {
   };
 }
 
-export function addImage(projectRoot, { id, template, profile }) {
+export function addImage(projectRoot, { id, template, category, profile }) {
   const config = readProjectConfig(projectRoot);
   const images = Array.isArray(config.images) ? config.images : [];
   if (images.some((image) => image.id === id)) {
@@ -57,6 +57,7 @@ export function addImage(projectRoot, { id, template, profile }) {
       kind: "template",
       ...(profile ? { profileId: profile } : {}),
       templateName: template,
+      ...(category ? { templateCategory: category } : {}),
       cleanupPolicy: "workspace_cleanup_only",
     },
   };
@@ -66,7 +67,13 @@ export function addImage(projectRoot, { id, template, profile }) {
   if (isDefault) {
     writeConfig(projectRoot, { ...pluginConfig, defaultImage: id });
   }
-  return { id, imageName, isDefault, templateName: template };
+  return {
+    id,
+    imageName,
+    isDefault,
+    templateName: template,
+    ...(category ? { templateCategory: category } : {}),
+  };
 }
 
 export function useImage(projectRoot, id) {

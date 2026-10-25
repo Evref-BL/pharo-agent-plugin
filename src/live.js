@@ -43,32 +43,58 @@ export function pifsStopCode(projectionPort) {
   return `(Smalltalk globals at: #PIFSServer) stopOn: ${projectionPort}`;
 }
 
-export function resultPrintString(result) {
-  // MCP tool results carry the image's answer as JSON inside a text content part.
-  if (typeof result === "string") {
+function namedPrintString(value) {
+  // Structured results name the print string, somewhere under the envelope,
+  // and reach us either as an object or as JSON inside a text part.
+  if (typeof value === "string") {
     try {
-      return resultPrintString(JSON.parse(result));
+      return namedPrintString(JSON.parse(value));
     } catch {
       return undefined;
     }
   }
-  if (!result || typeof result !== "object") return undefined;
-  if (typeof result.resultPrintString === "string") return result.resultPrintString;
-  for (const value of Object.values(result)) {
-    const found = resultPrintString(value);
+  if (!value || typeof value !== "object") return undefined;
+  if (typeof value.resultPrintString === "string") return value.resultPrintString;
+  for (const each of Object.values(value)) {
+    const found = namedPrintString(each);
     if (found) return found;
   }
   return undefined;
 }
 
+function textPartText(result) {
+  if (!result || typeof result !== "object" || !Array.isArray(result.content)) {
+    return undefined;
+  }
+  const part = result.content.find(
+    (candidate) =>
+      candidate
+      && candidate.type === "text"
+      && typeof candidate.text === "string",
+  );
+  const text = part?.text.trim();
+  return text === "" ? undefined : text;
+}
 
-export function needsImageCreation(listed, imageId) {
+export function resultPrintString(result) {
+  // A server answering with structured content names the print string. In the
+  // content-only mode every MCP server defaults to, the text part is the print
+  // string, so a bare `60341` arrives as the whole answer.
+  return namedPrintString(result) ?? textPartText(result);
+}
+
+export function imageCreationPlan(listed, imageId) {
   const summary = listed.images.find((image) => image.imageId === imageId);
   if (!summary) {
     throw new Error(`PLexus does not know image ${imageId}.`);
   }
   // PLexus reports an image it has no runtime state for as declared.
-  return summary.status === "declared";
+  if (summary.status === "declared") return "create";
+  // A creation that failed leaves runtime state that blocks both a retry and a
+  // fresh declaration of the same id, so the id would be spent for good. Clear
+  // it and create again.
+  if (summary.status === "failed") return "reset";
+  return "none";
 }
 
 // The launcher resolves a template name against its default group only, so an
@@ -165,8 +191,10 @@ export async function openAgentImage(projectRoot, imageId) {
   }
   fetchPifsRelease(pifsCloneDirectory(projectRoot));
   const launcher = new ScopedPharoLauncher({ projectRoot });
-  const created = needsImageCreation(launcher.listImages(), resolved);
+  const plan = imageCreationPlan(launcher.listImages(), resolved);
+  const created = plan !== "none";
   if (created) {
+    if (plan === "reset") await launcher.resetImage(resolved);
     await resolveTemplateCategory(projectRoot, launcher, resolved);
     await launcher.createImage(resolved);
   }
@@ -179,9 +207,18 @@ export async function openAgentImage(projectRoot, imageId) {
   try {
     ({ image, mcpServerId } = selectRunningImage(opened.state, resolved));
   } catch (error) {
-    // The image is running but unusable to us, so do not leave it behind.
-    await closeProject({ projectRoot, imageIds: [resolved] }).catch(() => {});
-    throw error;
+    // An image whose Pharo version is outside the MCP contract still runs, and
+    // is still worth having: the caller asked for that version, and the tools
+    // it cannot offer are the only thing missing. Keep it, and say what is gone.
+    const withoutMcp = unsupportedRunningImage(opened.state, resolved);
+    if (!withoutMcp) {
+      // The image is running but unusable to us, so do not leave it behind.
+      await closeProject({ projectRoot, imageIds: [resolved] }).catch(() => {});
+      throw error;
+    }
+    const open = { statePath: opened.statePath, imageId: resolved, mcp: false };
+    writeOpenImages(projectRoot, { ...openImages, [resolved]: open });
+    return { ...open, created, warning: pharoMcpWarning(withoutMcp) };
   }
   const mountPath = resolveMountPath(projectRoot, readConfig(projectRoot), image.id);
   fs.mkdirSync(path.dirname(mountPath), { recursive: true });
@@ -191,8 +228,36 @@ export async function openAgentImage(projectRoot, imageId) {
     mcpServerId,
     mountPath,
   };
+  let projectionPort;
+  try {
+    projectionPort = await startProjection(projectRoot, open, image.imageName);
+  } catch (error) {
+    // The projection is half-started at best and nothing records it yet, so
+    // close the image rather than leave an image and a mount nothing owns.
+    await closeProject({ projectRoot, imageIds: [resolved] }).catch(() => {});
+    throw error;
+  }
+  writeOpenImages(projectRoot, { ...openImages, [resolved]: { ...open, projectionPort } });
+  return { imageId: image.id, created, mountPath, projectionPort };
+}
+
+function unsupportedRunningImage(state, imageId) {
+  const image = (state.images ?? []).find(
+    (candidate) => candidate.id === imageId && candidate.status === "running",
+  );
+  return image?.pharoMcpContract?.status === "unsupported" ? image : undefined;
+}
+
+export function pharoMcpWarning(image) {
+  const reason = image.pharoMcpContract?.reason
+    ?? "This image Pharo version is outside the supported Pharo MCP range.";
+  return `${reason} Image ${image.id} is open without MCP tools or a source projection;`
+    + " drive it with the Pharo command line instead.";
+}
+
+async function startProjection(projectRoot, open, imageName) {
   const result = await callImageTool(projectRoot, open, "image_evaluate", {
-    code: pifsStartCode(mountPath, image.imageName),
+    code: pifsStartCode(open.mountPath, imageName),
   });
   const projectionPort = Number(resultPrintString(result));
   if (!Number.isInteger(projectionPort) || projectionPort < 1) {
@@ -200,19 +265,22 @@ export async function openAgentImage(projectRoot, imageId) {
       `PIFS did not report a projection port: ${JSON.stringify(result).slice(0, 500)}`,
     );
   }
-  writeOpenImages(projectRoot, { ...openImages, [resolved]: { ...open, projectionPort } });
-  return { imageId: image.id, created, mountPath, projectionPort };
+  return projectionPort;
 }
 
 async function closeOneImage(projectRoot, openImages, imageId) {
   const open = openImages[imageId];
   let projectionError;
-  try {
-    await callImageTool(projectRoot, open, "image_evaluate", {
-      code: pifsStopCode(open.projectionPort),
-    });
-  } catch (error) {
-    projectionError = error;
+  // An image opened without MCP has no projection to stop, and no route to
+  // ask over either.
+  if (open.projectionPort !== undefined) {
+    try {
+      await callImageTool(projectRoot, open, "image_evaluate", {
+        code: pifsStopCode(open.projectionPort),
+      });
+    } catch (error) {
+      projectionError = error;
+    }
   }
   const closed = await runLifecycle(
     () => closeProject({ projectRoot, imageIds: [imageId] }),
@@ -266,6 +334,24 @@ export function agentImageStatus(projectRoot) {
     images: Object.values(openImages).map((open) => ({
       ...open,
       isDefault: open.imageId === defaultImage,
+    })),
+  };
+}
+
+export async function listImageTemplates(projectRoot) {
+  // `image add --template` takes a name the launcher must already know, and a
+  // name that lands in two categories needs the category as well, so answer
+  // both rather than leave the caller guessing a magic string.
+  const listed = await new ScopedPharoLauncher({ projectRoot }).listTemplates();
+  const counts = new Map();
+  for (const template of listed.templates) {
+    counts.set(template.name, (counts.get(template.name) ?? 0) + 1);
+  }
+  return {
+    templates: listed.templates.map((template) => ({
+      name: template.name,
+      category: template.templateCategory,
+      ...(counts.get(template.name) > 1 ? { categoryRequired: true } : {}),
     })),
   };
 }

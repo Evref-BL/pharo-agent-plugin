@@ -7,7 +7,8 @@ import test from "node:test";
 import { toolResult, withImageSelector } from "../src/gateway.js";
 import {
   describeLifecycleFailure,
-  needsImageCreation,
+  imageCreationPlan,
+  pharoMcpWarning,
   fetchPifsRelease,
   pifsRelease,
   pifsSelectors,
@@ -19,6 +20,7 @@ import {
 import { classSideSelectors, missingSelectors } from "../scripts/check-pifs-selectors.mjs";
 import {
   activePath,
+  readOpenImage,
   readOpenImages,
   selectRunningImage,
   smalltalkString,
@@ -186,15 +188,24 @@ test("an image PLexus has no runtime state for needs creating", () => {
   const listed = {
     images: [
       { imageId: "fresh", status: "declared" },
+      { imageId: "broken", status: "failed" },
       { imageId: "stopped", status: "stopped" },
       { imageId: "live", status: "running" },
     ],
   };
 
-  assert.equal(needsImageCreation(listed, "fresh"), true);
-  assert.equal(needsImageCreation(listed, "stopped"), false);
-  assert.equal(needsImageCreation(listed, "live"), false);
-  assert.throws(() => needsImageCreation(listed, "other"), /does not know image other/);
+  assert.equal(imageCreationPlan(listed, "fresh"), "create");
+  assert.equal(imageCreationPlan(listed, "stopped"), "none");
+  assert.equal(imageCreationPlan(listed, "live"), "none");
+  assert.throws(() => imageCreationPlan(listed, "other"), /does not know image other/);
+});
+
+test("a creation that failed is reset rather than stranding the image id", () => {
+  // PLexus refuses to create over runtime state and refuses to launch an image
+  // that was never created, so a failed image is unusable until it is reset.
+  const listed = { images: [{ imageId: "broken", status: "failed" }] };
+
+  assert.equal(imageCreationPlan(listed, "broken"), "reset");
 });
 
 test("a lifecycle failure reports the image, the remedy, and the launcher output", () => {
@@ -259,7 +270,15 @@ test("reads the evaluation result out of an MCP text content part", () => {
   };
 
   assert.equal(resultPrintString(envelope), "60974");
-  assert.equal(resultPrintString({ content: [{ type: "text", text: "not json" }] }), undefined);
+  assert.equal(resultPrintString({ content: [] }), undefined);
+});
+
+test("reads the evaluation result out of a content-only text part", () => {
+  // Every MCP server defaults to content-only responses, where the text part
+  // holds the print string itself rather than an envelope naming it.
+  assert.equal(resultPrintString({ content: [{ type: "text", text: "60341" }] }), "60341");
+  assert.equal(resultPrintString({ content: [{ type: "text", text: " 60341 " }] }), "60341");
+  assert.equal(resultPrintString({ content: [{ type: "text", text: "nil" }] }), "nil");
 });
 
 test("a shared clone missing the pinned release is fetched, once", () => {
@@ -318,4 +337,37 @@ test("a supported image missing its endpoint still reports the count alone", () 
   };
 
   assert.throws(() => selectRunningImage(state, "dev"), /reported 0\.$/);
+});
+
+test("an image outside the MCP contract is opened without tools, and says so", () => {
+  const warning = pharoMcpWarning({
+    id: "old",
+    pharoMcpContract: {
+      status: "unsupported",
+      reason: "Pharo 10 is outside the supported Pharo MCP range (12, 13, 14, 15).",
+    },
+  });
+
+  assert.match(warning, /Pharo 10 is outside the supported Pharo MCP range/);
+  assert.match(warning, /open without MCP tools or a source projection/);
+});
+
+test("a tool call against an image opened without MCP is refused with the reason", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "pharo-agent-nomcp-"));
+  try {
+    fs.mkdirSync(path.join(root, ".pharo-agent"), { recursive: true });
+    fs.writeFileSync(
+      path.join(root, "plexus.json"),
+      JSON.stringify({ id: "p", name: "p", images: [{ id: "old" }] }),
+    );
+    fs.writeFileSync(
+      path.join(root, ".pharo-agent", "config.json"),
+      JSON.stringify({ defaultImage: "old" }),
+    );
+    writeOpenImages(root, { old: { imageId: "old", mcp: false } });
+
+    assert.throws(() => readOpenImage(root, "old"), /offers no Pharo tools/);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
 });
