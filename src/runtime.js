@@ -90,6 +90,12 @@ export function readOpenImage(projectRoot, imageId) {
       `Image ${resolved} is not open. Run pharo-agent open${imageId ? ` --image ${resolved}` : ""} first.`,
     );
   }
+  if (open.mcp === false) {
+    throw new Error(
+      `Image ${resolved} is open without MCP, so it offers no Pharo tools. `
+        + "Register an image on a Pharo version the MCP contract supports to use them.",
+    );
+  }
   return open;
 }
 

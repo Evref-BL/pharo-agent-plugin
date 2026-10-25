@@ -31,3 +31,26 @@ test("status refuses --image instead of ignoring it", async () => {
     );
   });
 });
+
+test("help is answered wherever the word lands", async () => {
+  const lines = [];
+  const log = console.log;
+  console.log = (value) => lines.push(value);
+  try {
+    await main(["image", "add", "--help"]);
+  } finally {
+    console.log = log;
+  }
+
+  assert.match(lines.join("\n"), /pharo-agent image add <id> --template/);
+});
+
+test("the bundle reports the published version, not a placeholder", async () => {
+  const { version } = await import("../src/gateway.js");
+  const published = JSON.parse(
+    fs.readFileSync(new URL("../package.json", import.meta.url), "utf8"),
+  ).version;
+
+  assert.equal(version, published);
+  assert.notEqual(version, "0.0.0");
+});

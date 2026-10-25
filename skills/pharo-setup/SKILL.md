@@ -19,9 +19,11 @@ Setup initializes the current directory, creating `plexus.json` with
 no image when it is absent. Register one before the first `pharo-agent open`:
 
 ```sh
-pharo-agent image list
+pharo-agent image templates
 pharo-agent image add dev --template '<launcher template name>'
 ```
+
+`image templates` names what the launcher offers, with the category of each.
 
 After setup, read `pharo.AGENTS.md` in this chat before doing Pharo work. A
 new chat picks up the conditional project guidance automatically.

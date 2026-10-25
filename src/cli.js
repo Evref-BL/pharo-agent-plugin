@@ -1,7 +1,12 @@
 import { initialize } from "./init.js";
 import { addImage, listImages, removeImage, useImage } from "./images.js";
 import { callImageTool, listImageTools, serveImagesMcp } from "./gateway.js";
-import { agentImageStatus, closeAgentImage, openAgentImage } from "./live.js";
+import {
+  agentImageStatus,
+  closeAgentImage,
+  listImageTemplates,
+  openAgentImage,
+} from "./live.js";
 import { findProjectRoot } from "./project.js";
 import { readOpenImage } from "./runtime.js";
 
@@ -32,7 +37,11 @@ function parseImageAdd(args) {
     throw new Error("image add requires an image id");
   }
   const parsed = { id };
-  const options = { "--template": "template", "--profile": "profile" };
+  const options = {
+    "--template": "template",
+    "--category": "category",
+    "--profile": "profile",
+  };
   for (let index = 0; index < rest.length; index += 1) {
     const option = rest[index];
     const key = options[option];
@@ -67,7 +76,8 @@ function usage() {
     "Usage:",
     "  pharo-agent init --host <codex|claude|opencode> [--mount-root <path>]",
     "  pharo-agent image list",
-    "  pharo-agent image add <id> --template <name> [--profile <id>]",
+    "  pharo-agent image templates",
+    "  pharo-agent image add <id> --template <name> [--category <name>] [--profile <id>]",
     "  pharo-agent image use <id>",
     "  pharo-agent image remove <id>",
     "  pharo-agent open [--image <id>]",
@@ -106,7 +116,10 @@ export async function main(args) {
     console.log(JSON.stringify({ ok: true, ...result }, null, 2));
     return;
   }
-  if (!command || command === "--help" || command === "help") {
+  // A caller reaching for help is asking the same question wherever the word
+  // lands, and `image add --help` answering that it needs an image id is no
+  // answer at all.
+  if (!command || args.some((value) => value === "--help" || value === "help")) {
     console.log(usage());
     return;
   }
@@ -116,6 +129,15 @@ export async function main(args) {
     if (subcommand === "list") {
       requireNoArguments("image list", imageArgs);
       console.log(JSON.stringify({ ok: true, ...listImages(projectRoot) }, null, 2));
+      return;
+    }
+    if (subcommand === "templates") {
+      requireNoArguments("image templates", imageArgs);
+      console.log(JSON.stringify(
+        { ok: true, ...(await listImageTemplates(projectRoot)) },
+        null,
+        2,
+      ));
       return;
     }
     if (subcommand === "add") {

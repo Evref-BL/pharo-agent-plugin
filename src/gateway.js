@@ -1,3 +1,4 @@
+import { createRequire } from "node:module";
 import { PlexusGateway } from "@evref-bl/plexus-gateway";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
@@ -6,6 +7,10 @@ import {
   ListToolsRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
 import { readJson, readOpenImage, selectRunningImage } from "./runtime.js";
+
+// Read rather than restate: a hard-coded version is one more place for a
+// release to forget, and the host shows this one to the user.
+export const { version } = createRequire(import.meta.url)("../package.json");
 
 export async function imageGateway(projectRoot, open) {
   const state = readJson(open.statePath);
@@ -78,7 +83,7 @@ export async function serveImagesMcp(projectRoot, defaultImage) {
   const toolNames = new Set(tools.map((tool) => tool.name));
 
   const server = new Server(
-    { name: "pharo-agent", version: "0.0.0" },
+    { name: "pharo-agent", version },
     { capabilities: { tools: {} } },
   );
   server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools }));

@@ -82,19 +82,37 @@ function pharoGuide() {
 project declares none; register one before the first \`pharo-agent open\`:
 
 \`\`\`sh
+pharo-agent image templates
 pharo-agent image list
 pharo-agent image add dev --template '<launcher template name>'
 \`\`\`
+
+\`image templates\` names the templates the launcher offers, with the category
+of each; a name two categories offer also needs \`--category <name>\`. Any
+version the launcher offers can be registered, and one outside the MCP range
+opens without MCP tools or a source projection, saying so.
 
 \`image add\` makes the first registered image the default. \`pharo-agent image
 use <id>\` changes the default, and \`pharo-agent image remove <id>\` drops a
 declaration. Close an image before removing its declaration.
 
 Use \`pharo-agent open\` before live-image work and edit projected source under
-\`.pharo-agent/mounts\`. Use \`pharo-agent pharo list\` to inspect the complete
-live MCP tool surface and \`pharo-agent pharo <tool> [arguments-json]\` to call
-a tool. \`pharo-agent mcp\` exposes the image as a command-scoped stdio MCP
-server.
+\`.pharo-agent/mounts\`. Call a tool with
+\`pharo-agent pharo <tool> [arguments-json]\`, and \`pharo-agent mcp\` exposes the
+image as a command-scoped stdio MCP server.
+
+\`pharo-agent pharo list\` names the tools the image advertises, which are the
+common ones rather than all of it. The rest are reached through the catalogue,
+and this is how to find a tool rather than guess at one:
+
+\`\`\`sh
+pharo-agent pharo tool_search '{"query":"repository commit"}'
+pharo-agent pharo tool_get '{"name":"repository_commit"}'
+pharo-agent pharo tool_call '{"name":"repository_commit","arguments":{}}'
+\`\`\`
+
+A tool \`pharo list\` does not name has to be called through \`tool_call\`;
+calling it directly answers that the method does not exist.
 
 Several images can be open at once. Every image-facing command takes
 \`--image <id>\`; without it the default image answers. \`pharo-agent open
