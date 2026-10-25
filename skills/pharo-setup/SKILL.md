@@ -8,10 +8,11 @@ Run this only when the user asks to enable Pharo tooling in this project.
 From the project root, run the released CLI that matches this plugin:
 
 ```sh
-npx --yes @evref-bl/pharo-agent@0.4.0 init --host codex
+npx --yes @evref-bl/pharo-agent@0.4.0 init --host claude
 ```
 
-Use `--host claude` in Claude Code and `--host opencode` in OpenCode.
+Name the host this chat runs in: `--host claude` in Claude Code,
+`--host codex` in Codex, `--host opencode` in OpenCode.
 Do not configure an MCP server in the agent host. The command adds only a
 conditional instruction block, so Pharo guidance stays out of unrelated work.
 

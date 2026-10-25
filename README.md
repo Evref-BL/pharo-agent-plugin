@@ -1,79 +1,36 @@
 # pharo-agent
 
-`pharo-agent` is a terminal-first Pharo integration for Codex, Claude Code, and
-OpenCode. It has one small setup skill; a project receives the full Pharo
-guidance only after setup.
+`pharo-agent` gives a coding agent a live Pharo image: semantic tools over MCP,
+and the image's source projected as files it can read and edit. It works with
+Claude Code, Codex and OpenCode.
 
-Initialize the current directory for one selected agent host:
+## Setup
 
-```sh
-npx --yes @evref-bl/pharo-agent init --host codex
-```
-
-It writes a small conditional instruction block, `pharo.AGENTS.md`, and copies
-on-demand Pharo workflow skills and references from the pinned MCP template
-package. It does not install an agent-host MCP server.
-
-`init` acts on the current directory and never searches above it. If that
-directory has no `plexus.json`, it creates one that declares the
-project and no image; an existing one is left untouched. It refuses to run
-inside an enclosing PLexus project rather than initializing that project root.
-
-`image templates` names the templates the launcher offers, with the category of
-each. Register the image the project needs before the first `open`:
+In the project directory:
 
 ```sh
-pharo-agent image add dev --template 'Pharo 13.0 - 64bit (stable)'
+npx --yes @evref-bl/pharo-agent init --host <claude|codex|opencode>
 ```
 
-`image add` registers a template-created image with the pinned MCP load policy,
-and the first one registered becomes the default. A template name that several
-categories offer needs `--category <name>`, which `image templates` flags. Pass
-`--profile <id>` to put it under a particular launcher profile. `image list`,
-`image use <id>` (change the default) and `image remove <id>` cover the rest; an
-open image must be closed before its declaration is removed.
-
-Any Pharo version the launcher offers can be registered. MCP and PIFS support a
-range of versions, and an image outside it opens without them: `open` says which
-tools are missing and why, and the image is yours to drive another way.
-
-`open` starts an image through PLexus, loads PIFS, and mounts its projection
-below `.pharo-agent/mounts`. `close` unmounts the projection and closes the
-PLexus image. `pharo <tool> [arguments-json]` calls any exposed MCP tool
-through the same project route and `pharo list` names the tools an image
-offers, while `mcp` exposes that tool surface as a command-scoped stdio MCP
-server.
-
-Several images can be open at once. `open`, `close`, `pharo` and `mcp` accept
-`--image <id>`; without it the default image answers, so a project with one
-image never mentions an image at all. `open --image <id>` adds an image
-without closing the others, and `close` without `--image` closes every image
-this project opened. `status` takes no `--image`, because it reports every
-open image and which one is the default. Over `mcp`, each Pharo tool takes the
-same optional `image` argument.
-
-Pass `--mount-root <path>` to `init` to use a different projection root.
+That is all of it. `init` writes the project's Pharo guidance and copies the
+workflow skills that guidance refers to. From there the agent registers the
+image the project needs, opens it and uses its tools by following what was
+written; ask it for Pharo work as you would for anything else.
 
 ## Requirements
 
 Node 22.12 or later.
 
-PIFS currently supports the macOS workflow and needs
-[fuse-t](https://www.fuse-t.org/). Its matching daemon is downloaded by PIFS;
-Go is not required at runtime.
+The source projection currently supports macOS and needs
+[fuse-t](https://www.fuse-t.org/). Its daemon is downloaded for you.
 
-The CLI pins released MCP and PLexus dependencies. PLexus, in turn, pins the
-MCP release used to prepare the image; PIFS is loaded at its own exact release
-from the image.
+## What the agent gets
 
-## Host setup
+Reference, for reading rather than typing: these are the commands the guidance
+hands to the agent.
 
-Codex and Claude Code can install the repository as a plugin. Its only global
-skill initializes the current project; it does not add an MCP server or the
-Pharo workflow catalogue to every chat. OpenCode uses the same CLI command
-with `--host opencode`.
-
-After initialization, the selected host guide says to read
-`pharo.AGENTS.md` only for Pharo work. That guide points to local workflow
-skills and references on demand. In the chat that runs setup, read that file
-before beginning Pharo work; later chats load the conditional guidance normally.
+- [Hosts](docs/hosts.md) — what `init` writes, and installing as a plugin.
+- [Images](docs/images.md) — templates and categories, several images at once,
+  Pharo versions outside the MCP range.
+- [Tools](docs/tools.md) — the advertised surface, finding the rest, and the
+  stdio bundle.
