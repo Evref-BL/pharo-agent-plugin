@@ -33,7 +33,7 @@ test("package and host manifests share the plugin identity", () => {
 test("setup skill installs the matching CLI release", () => {
   const packageJson = readJson("package.json");
   const skill = fs.readFileSync(path.join(root, "skills/pharo-setup/SKILL.md"), "utf8");
-  assert.match(skill, new RegExp(`@evref-bl/pharo-agent@${packageJson.version} init --host codex`));
+  assert.match(skill, new RegExp(`@evref-bl/pharo-agent@${packageJson.version} init --host claude`));
 });
 
 test("marketplaces expose the plugin from the repository root", () => {

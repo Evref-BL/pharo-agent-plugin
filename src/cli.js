@@ -1,3 +1,4 @@
+import { hostChoices, hostList } from "./hosts.js";
 import { initialize } from "./init.js";
 import { addImage, listImages, removeImage, useImage } from "./images.js";
 import { callImageTool, listImageTools, serveImagesMcp } from "./gateway.js";
@@ -27,7 +28,7 @@ function parseInit(args) {
     }
     throw new Error(`Unknown init option: ${option}`);
   }
-  if (!host) throw new Error("init requires --host <codex|claude|opencode>");
+  if (!host) throw new Error(`init requires --host <${hostChoices()}>`);
   return { host, mountRoot };
 }
 
@@ -74,7 +75,7 @@ function takeImageOption(args) {
 function usage() {
   return [
     "Usage:",
-    "  pharo-agent init --host <codex|claude|opencode> [--mount-root <path>]",
+    `  pharo-agent init --host <${hostChoices()}> [--mount-root <path>]`,
     "  pharo-agent image list",
     "  pharo-agent image templates",
     "  pharo-agent image add <id> --template <name> [--category <name>] [--profile <id>]",

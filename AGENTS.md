@@ -2,7 +2,7 @@
 
 `pharo-agent` is a terminal-first integration for Pharo projects. It installs
 only a selected agent host's conditional instruction shim. It must not register
-an MCP server with Codex, Claude Code, or OpenCode.
+an MCP server with Claude Code, Codex, or OpenCode.
 
 ## Boundaries
 
@@ -19,6 +19,9 @@ an MCP server with Codex, Claude Code, or OpenCode.
 
 - Keep ordinary commands argument-light: `init --host`, `open`, `status`,
   `close`, and `pharo <tool> [arguments-json]`.
+- `src/hosts.js` is the one list of supported hosts, in the order they are
+  offered. The usage line, the error message, the README and the setup skill
+  all follow it; do not spell the hosts out anywhere else.
 - Never expose gateway URLs, ports, project roots, workspace IDs, target IDs,
   or MCP server IDs as normal agent arguments.
 - Do not register template skills with an agent host. The generated root shim

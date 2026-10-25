@@ -30,7 +30,7 @@ test("set-version synchronizes published version references", () => {
     }
     assert.match(
       fs.readFileSync(path.join(temporaryDirectory, "skills", "pharo-setup", "SKILL.md"), "utf8"),
-      /@evref-bl\/pharo-agent@0\.1\.1 init --host codex/,
+      /@evref-bl\/pharo-agent@0\.1\.1 init --host claude/,
     );
   } finally {
     fs.rmSync(temporaryDirectory, { recursive: true, force: true });
