@@ -80,7 +80,6 @@ export async function serveImagesMcp(projectRoot, defaultImage) {
   const defaultOpen = readOpenImage(projectRoot, defaultImage);
   const tools = (await listImageTools(projectRoot, defaultOpen))
     .map((tool) => withImageSelector(tool, defaultImage));
-  const toolNames = new Set(tools.map((tool) => tool.name));
 
   const server = new Server(
     { name: "pharo-agent", version },
@@ -88,9 +87,10 @@ export async function serveImagesMcp(projectRoot, defaultImage) {
   );
   server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools }));
   server.setRequestHandler(CallToolRequestSchema, async (request) => {
-    if (!toolNames.has(request.params.name)) {
-      throw new Error(`Unknown Pharo tool: ${request.params.name}`);
-    }
+    // Listed tools are the common ones, not the whole catalogue, and the image
+    // answers for any tool it holds. Refusing a name this list does not carry
+    // would hide tools that tool_search just found, and the image's own error
+    // is the better answer for a name nothing holds.
     const { image, ...argumentsValue } = request.params.arguments ?? {};
     const open = readOpenImage(projectRoot, image);
     return toolResult(
