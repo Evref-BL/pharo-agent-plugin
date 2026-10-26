@@ -120,16 +120,16 @@ export function exitCodeForToolResult(result) {
 
 export async function main(args) {
   const [command, ...rest] = args;
-  if (command === "init") {
-    const result = initialize(parseInit(rest));
-    console.log(JSON.stringify({ ok: true, ...result }, null, 2));
-    return;
-  }
   // A caller reaching for help is asking the same question wherever the word
   // lands, and `image add --help` answering that it needs an image id is no
   // answer at all.
   if (!command || args.some((value) => value === "--help" || value === "help")) {
     console.log(usage());
+    return;
+  }
+  if (command === "init") {
+    const result = initialize(parseInit(rest));
+    console.log(JSON.stringify({ ok: true, ...result }, null, 2));
     return;
   }
   const projectRoot = findProjectRoot();
