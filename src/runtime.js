@@ -99,6 +99,32 @@ export function readOpenImage(projectRoot, imageId) {
   return open;
 }
 
+// A record in the project's runtime state says this project opened the image,
+// not that the image is still there. PLexus reclaims a dead image's port and
+// relaunches on the next open, so the only thing standing between a crashed
+// image and a working one is believing the record.
+export function imageProcessIsAlive(pid) {
+  if (!Number.isInteger(pid) || pid <= 0) return false;
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    // The process is someone else's, which is still a process.
+    return error.code === "EPERM";
+  }
+}
+
+export function openedImageIsAlive(open) {
+  let state;
+  try {
+    state = readJson(open.statePath);
+  } catch {
+    return false;
+  }
+  const image = (state.images ?? []).find((candidate) => candidate.id === open.imageId);
+  return image?.status === "running" && imageProcessIsAlive(image.pid);
+}
+
 export function resolveMountPath(projectRoot, config, imageId) {
   const root = config.mountRoot ?? ".pharo-agent/mounts";
   return path.resolve(projectRoot, root, imageId);

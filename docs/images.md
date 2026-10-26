@@ -68,6 +68,21 @@ the catalogue, and answers that it does not exist, is otherwise a puzzle.
 Recreate the image to pick the pinned version up, or set `mcp.loadPolicy` to
 `always` in `plexus.json` to load it on every open.
 
+## An image that is no longer running
+
+`open` on an image this project already opened answers `alreadyOpen` — but
+only after checking that the image is still there. A Pharo image can exit on
+its own, and the record of having opened it outlives the process. Answering
+from the record alone hands back an endpoint nothing answers, and every later
+`open` does it again.
+
+When the process is gone the record goes with it and the image is opened
+again, which `open` reports:
+
+```json
+{ "ok": true, "imageId": "scratch", "restarted": true, "mountPath": "..." }
+```
+
 ## Where things live
 
 `.pharo-agent/mounts` holds the projections, `.pharo-agent/runtime` the state
