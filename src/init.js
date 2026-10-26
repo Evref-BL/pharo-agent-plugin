@@ -76,6 +76,13 @@ function pharoGuide() {
 
 ${generatedBy}. Edits here are replaced the next time it runs.
 
+After upgrading the plugin/CLI, re-run \`pharo-agent init --host <host>\` from
+the project root with the same host to refresh this guide and the copied skills
+and references. Omit \`--mount-root\` to keep existing settings. Image declarations,
+runtime state, and live code are preserved. Keep project-specific instructions
+outside generated/copied files and outside the host guide's managed block.
+Refreshing project files does not install a newer package or upgrade image tools.
+
 \`plexus.json\` declares this project's images. A freshly initialized
 project declares none; register one before the first \`pharo-agent open\`:
 

@@ -27,6 +27,30 @@ refuses to replace a `pharo.AGENTS.md` it did not generate.
 It does not register an MCP server with the host. `pharo-agent mcp` is there
 for a chat that wants one, per project rather than globally.
 
+## Refreshing after an upgrade
+
+Upgrade the plugin/CLI using the same method you used to install it. Then run
+that version's `pharo-agent init --host <claude|codex|opencode>` from each
+project root, selecting the same host as before. Re-running `init` is the
+project refresh operation; it uses the templates pinned by the executing CLI.
+
+The refresh replaces `pharo.AGENTS.md` and same-named files copied into
+`.pharo-agent/references` and `.pharo-agent/skills`. It replaces only the
+pharo-agent block in the selected host's guide. Put project-specific guidance
+outside that block, and keep custom files separate from the generated/copied
+paths. Unrelated files are not removed during refresh.
+
+Existing `plexus.json`, including image declarations, is preserved. Omit
+`--mount-root` to preserve the existing plugin configuration, including custom
+mount roots and the default image. Runtime records and mounted sources are
+left alone; refresh does not open, close, save, or reload images.
+
+Updating the installed package, refreshing project files, and upgrading code
+inside an image are separate operations. In particular, an image opened with
+MCP's `ifMissing` load policy keeps the MCP it already has. Follow the
+[image update guidance](images.md#an-image-that-brought-its-own-mcp) when an
+image also needs a newer MCP; re-running `init` does not perform that upgrade.
+
 ## Installing as a plugin
 
 Claude Code and Codex can install this repository as a plugin, from
