@@ -26,6 +26,10 @@ The source projection currently supports macOS and needs
 
 ## What the agent gets
 
+Use `pharo-agent --help` for the command overview, or append `--help` to a
+command for its options, defaults, and an example: `pharo-agent init --help`
+or `pharo-agent image add --help`. Help works before project setup.
+
 Reference, for reading rather than typing: these are the commands the guidance
 hands to the agent.
 

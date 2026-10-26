@@ -6,6 +6,7 @@ import test from "node:test";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { exitCodeForToolResult, main } from "../src/cli.js";
+import { hostChoices } from "../src/hosts.js";
 
 function temporaryProject() {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "pharo-agent-cli-"));
@@ -38,10 +39,35 @@ test("help is answered wherever the word lands without initializing a project", 
   const binary = fileURLToPath(new URL("../bin/pharo-agent.js", import.meta.url));
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "pharo-agent-help-"));
   try {
-    for (const args of [["image", "add", "--help"], ["init", "--help"], ["init", "help"]]) {
+    const cases = [
+      [[], /pharo-agent image add <id> --template/],
+      [["--help"], /pharo-agent init --host/],
+      [["help"], /pharo-agent image add/],
+      [["init", "--help"], /Re-run to refresh/],
+      [["init", "help"], /mount root defaults to \.pharo-agent\/mounts/],
+      [["help", "init"], /required agent host/],
+      [["image", "--help"], /pharo-agent image templates/],
+      [["image", "add", "--help"], /first declared image becomes the default/],
+      [["image", "list", "--help"], /recorded open state/],
+      [["image", "templates", "--help"], /available launcher templates/],
+      [["image", "use", "--help"], /project's default/],
+      [["image", "remove", "--help"], /image files are kept/],
+      [["open", "--help"], /Other open images stay open/],
+      [["close", "--help"], /Omitting --image closes all images/],
+      [["status", "--help"], /does not accept --image/],
+      [["mcp", "--help"], /command-scoped stdio MCP server/],
+      [["pharo", "--help"], /JSON object and default to \{\}/],
+      [["pharo", "list", "--help"], /advertised tools/],
+    ];
+    for (const [args, expected] of cases) {
       const result = spawnSync(process.execPath, [binary, ...args], { cwd: root, encoding: "utf8" });
       assert.equal(result.status, 0, result.stderr);
-      assert.match(result.stdout, /pharo-agent image add <id> --template/);
+      assert.match(result.stdout, expected, args.join(" "));
+      if (args.includes("init")) {
+        assert.ok(result.stdout.includes(`--host <${hostChoices()}>`));
+        assert.doesNotMatch(result.stdout, /pharo-agent image add/);
+      }
+      assert.match(result.stdout, /pharo-agent/);
       assert.equal(result.stderr, "");
       assert.deepEqual(fs.readdirSync(root), []);
     }
