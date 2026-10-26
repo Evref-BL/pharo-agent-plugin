@@ -1,6 +1,6 @@
 {
   "name": "@evref-bl/pharo-agent",
-  "version": "0.5.4",
+  "version": "0.5.5",
   "private": false,
   "description": "Terminal-first Pharo integration for coding agents.",
   "license": "Apache-2.0",
