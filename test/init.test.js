@@ -6,6 +6,51 @@ import test from "node:test";
 import { templateDirectory as mcpTemplateDirectory } from "@evref-bl/pharo-mcp";
 import { initialize } from "../src/init.js";
 import { main } from "../src/cli.js";
+import { supportedHosts } from "../src/hosts.js";
+
+for (const host of supportedHosts) {
+  test(`init refreshes ${host.name} assets while preserving project and runtime state`, () => {
+    const root = temporaryProject();
+    try {
+      const hostGuide = path.join(root, host.guide);
+      fs.writeFileSync(hostGuide, "# User guidance\nKeep this.\n");
+      initialize({ host: host.id, cwd: root, mountRoot: ".custom-mounts" });
+      fs.appendFileSync(hostGuide, "# User addition\nKeep this too.\n");
+
+      const configPath = path.join(root, ".pharo-agent", "config.json");
+      const config = JSON.parse(fs.readFileSync(configPath, "utf8"));
+      fs.writeFileSync(configPath, JSON.stringify({ ...config, defaultImage: "dev" }));
+      const projectPath = path.join(root, "plexus.json");
+      const project = JSON.parse(fs.readFileSync(projectPath, "utf8"));
+      fs.writeFileSync(projectPath, JSON.stringify({ ...project, images: [{ id: "dev" }] }));
+      const runtimePath = path.join(root, ".pharo-agent", "runtime", "active.json");
+      fs.mkdirSync(path.dirname(runtimePath), { recursive: true });
+      fs.writeFileSync(runtimePath, '{"images":{"dev":{"imageId":"dev"}}}');
+      const mountPath = path.join(root, ".custom-mounts", "dev", "source.txt");
+      fs.mkdirSync(path.dirname(mountPath), { recursive: true });
+      fs.writeFileSync(mountPath, "Existing projected source fixture");
+      const localNote = path.join(root, ".pharo-agent", "local.md");
+      fs.writeFileSync(localNote, "User-owned notes");
+      const preserved = [hostGuide, configPath, projectPath, runtimePath, mountPath, localNote]
+        .map((file) => [file, fs.readFileSync(file, "utf8")]);
+
+      const generated = [
+        path.join(root, "pharo.AGENTS.md"),
+        path.join(root, ".pharo-agent", "references", "pharo-coding-rules.md"),
+        path.join(root, ".pharo-agent", "skills", "pharo-project-load", "SKILL.md"),
+      ].map((file) => [file, fs.readFileSync(file, "utf8")]);
+      for (const [file] of generated) fs.appendFileSync(file, "\nStale generated content\n");
+
+      initialize({ host: host.id, cwd: root });
+
+      for (const [file, expected] of [...generated, ...preserved]) {
+        assert.equal(fs.readFileSync(file, "utf8"), expected, file);
+      }
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
+}
 
 for (const host of ["codex", "claude", "opencode"]) {
   test(`init omits host-discovery metadata for ${host}'s soft-loaded skills`, () => {

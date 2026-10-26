@@ -17,6 +17,20 @@ workflow skills that guidance refers to. From there the agent registers the
 image the project needs, opens it and uses its tools by following what was
 written; ask it for Pharo work as you would for anything else.
 
+## Refreshing an existing project
+
+After upgrading the plugin/CLI through your usual installation method, re-run
+`pharo-agent init --host <claude|codex|opencode>` from the project root with
+the same host. This refreshes the generated guidance, skills, and references
+using that CLI version's pinned templates. Image declarations, existing plugin
+settings, and guidance outside the host's managed block are preserved when
+you omit `--mount-root`.
+
+Generated/copied files are overwritten, so keep project-specific instructions
+outside them. Refreshing project files does not upgrade the installed package
+or update, restart, or save existing images. See [Hosts](docs/hosts.md) for
+the file ownership rules and [Images](docs/images.md) for image-side MCP updates.
+
 ## Requirements
 
 Node 22.12 or later.
