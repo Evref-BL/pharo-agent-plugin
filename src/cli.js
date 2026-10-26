@@ -1,4 +1,5 @@
 import { hostChoices, hostList } from "./hosts.js";
+import { usage } from "./help.js";
 import { initialize } from "./init.js";
 import { addImage, listImages, removeImage, useImage } from "./images.js";
 import { callImageTool, listImageTools, serveImagesMcp } from "./gateway.js";
@@ -72,24 +73,6 @@ function takeImageOption(args) {
   return { image, rest: [...args.slice(0, index), ...args.slice(index + 2)] };
 }
 
-function usage() {
-  return [
-    "Usage:",
-    `  pharo-agent init --host <${hostChoices()}> [--mount-root <path>]`,
-    "  pharo-agent image list",
-    "  pharo-agent image templates",
-    "  pharo-agent image add <id> --template <name> [--category <name>] [--profile <id>]",
-    "  pharo-agent image use <id>",
-    "  pharo-agent image remove <id>",
-    "  pharo-agent open [--image <id>]",
-    "  pharo-agent status",
-    "  pharo-agent close [--image <id>]",
-    "  pharo-agent mcp [--image <id>]",
-    "  pharo-agent pharo list [--image <id>]",
-    "  pharo-agent pharo <tool> [arguments-json] [--image <id>]",
-  ].join("\n");
-}
-
 function requireNoArguments(command, args) {
   if (args.length > 0) {
     throw new Error(`${command} does not accept arguments`);
@@ -124,7 +107,7 @@ export async function main(args) {
   // lands, and `image add --help` answering that it needs an image id is no
   // answer at all.
   if (!command || args.some((value) => value === "--help" || value === "help")) {
-    console.log(usage());
+    console.log(usage(args.filter((value) => value !== "--help" && value !== "help")));
     return;
   }
   if (command === "init") {
