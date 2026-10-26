@@ -34,17 +34,20 @@ test("status refuses --image instead of ignoring it", async () => {
   });
 });
 
-test("help is answered wherever the word lands", async () => {
-  const lines = [];
-  const log = console.log;
-  console.log = (value) => lines.push(value);
+test("help is answered wherever the word lands without initializing a project", () => {
+  const binary = fileURLToPath(new URL("../bin/pharo-agent.js", import.meta.url));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "pharo-agent-help-"));
   try {
-    await main(["image", "add", "--help"]);
+    for (const args of [["image", "add", "--help"], ["init", "--help"], ["init", "help"]]) {
+      const result = spawnSync(process.execPath, [binary, ...args], { cwd: root, encoding: "utf8" });
+      assert.equal(result.status, 0, result.stderr);
+      assert.match(result.stdout, /pharo-agent image add <id> --template/);
+      assert.equal(result.stderr, "");
+      assert.deepEqual(fs.readdirSync(root), []);
+    }
   } finally {
-    console.log = log;
+    fs.rmSync(root, { recursive: true, force: true });
   }
-
-  assert.match(lines.join("\n"), /pharo-agent image add <id> --template/);
 });
 
 test("the bundle reports the published version, not a placeholder", async () => {
