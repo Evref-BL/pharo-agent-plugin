@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -22,6 +22,8 @@ import {
   activePath,
   readOpenImage,
   readOpenImages,
+  imageProcessIsAlive,
+  openedImageIsAlive,
   selectRunningImage,
   smalltalkString,
   unappliedPharoMcpPin,
@@ -410,5 +412,57 @@ test("an unrelated failure is reported as it is", () => {
   assert.equal(
     toolFailureMessage("MCP error -32601: nope.", { id: "p14", pharoMcpLoad: { state: "loaded" } }),
     "MCP error -32601: nope.",
+  );
+});
+
+function stateFileWith(image) {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "pharo-agent-state-"));
+  const statePath = path.join(root, "state.json");
+  fs.writeFileSync(statePath, `${JSON.stringify({ images: [image] })}\n`);
+  return statePath;
+}
+
+test("a process this machine is running is alive", () => {
+  assert.equal(imageProcessIsAlive(process.pid), true);
+});
+
+test("a pid that is not a pid is not alive", () => {
+  for (const pid of [undefined, null, 0, -1, "1234", 1.5]) {
+    assert.equal(imageProcessIsAlive(pid), false, `${pid} should not be alive`);
+  }
+});
+
+test("a process that has exited is not alive", () => {
+  const exited = spawnSync(process.execPath, ["-e", ""]);
+
+  assert.equal(exited.status, 0);
+  assert.equal(imageProcessIsAlive(exited.pid), false);
+});
+
+test("an image is open only while its process is there", () => {
+  const exited = spawnSync(process.execPath, ["-e", ""]);
+
+  assert.equal(
+    openedImageIsAlive({ imageId: "dev", statePath: stateFileWith({ id: "dev", status: "running", pid: process.pid }) }),
+    true,
+  );
+  assert.equal(
+    openedImageIsAlive({ imageId: "dev", statePath: stateFileWith({ id: "dev", status: "running", pid: exited.pid }) }),
+    false,
+  );
+  assert.equal(
+    openedImageIsAlive({ imageId: "dev", statePath: stateFileWith({ id: "dev", status: "stopped", pid: process.pid }) }),
+    false,
+  );
+  assert.equal(
+    openedImageIsAlive({ imageId: "other", statePath: stateFileWith({ id: "dev", status: "running", pid: process.pid }) }),
+    false,
+  );
+});
+
+test("a state file that is gone leaves no image open", () => {
+  assert.equal(
+    openedImageIsAlive({ imageId: "dev", statePath: path.join(os.tmpdir(), "pharo-agent-no-such-state.json") }),
+    false,
   );
 });

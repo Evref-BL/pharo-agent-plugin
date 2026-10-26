@@ -12,6 +12,7 @@ import { callImageTool } from "./gateway.js";
 import { readProjectConfig, writeProjectConfig } from "./project.js";
 import {
   defaultImageId,
+  openedImageIsAlive,
   readConfig,
   readOpenImages,
   resolveImageId,
@@ -186,9 +187,18 @@ export function fetchPifsRelease(cloneDirectory, release = pifsRelease) {
 
 export async function openAgentImage(projectRoot, imageId) {
   const resolved = resolveImageId(projectRoot, imageId);
-  const openImages = readOpenImages(projectRoot);
+  let openImages = readOpenImages(projectRoot);
+  let restarted = false;
   if (openImages[resolved]) {
-    return { alreadyOpen: true, ...openImages[resolved] };
+    if (openedImageIsAlive(openImages[resolved])) {
+      return { alreadyOpen: true, ...openImages[resolved] };
+    }
+    // The image this record names has exited. Forget it and open again,
+    // rather than hand back an endpoint nothing answers and say it is open.
+    const { [resolved]: exited, ...remaining } = openImages;
+    openImages = remaining;
+    writeOpenImages(projectRoot, openImages);
+    restarted = true;
   }
   fetchPifsRelease(pifsCloneDirectory(projectRoot));
   const launcher = new ScopedPharoLauncher({ projectRoot });
@@ -243,6 +253,7 @@ export async function openAgentImage(projectRoot, imageId) {
   return {
     imageId: image.id,
     created,
+    ...(restarted ? { restarted } : {}),
     mountPath,
     projectionPort,
     ...(unappliedPin ? { warning: unappliedPin } : {}),
