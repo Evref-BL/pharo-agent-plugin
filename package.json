@@ -31,9 +31,9 @@
     "test": "node --test"
   },
   "dependencies": {
-    "@evref-bl/pharo-mcp": "2.2.0",
-    "@evref-bl/plexus": "0.5.6",
-    "@evref-bl/plexus-gateway": "0.5.6",
+    "@evref-bl/pharo-mcp": "2.3.0",
+    "@evref-bl/plexus": "0.5.7",
+    "@evref-bl/plexus-gateway": "0.5.7",
     "@modelcontextprotocol/sdk": "1.32.1"
   }
 }
