@@ -71,6 +71,42 @@ function guidance() {
   return `# Pharo work\n\nWhen the task uses Pharo, read \`pharo.AGENTS.md\` before acting.\n`;
 }
 
+// MCP ships the references and skills, so which one answers what is its to
+// state. Repeating the list here went stale the first time a template was
+// renamed, and sent readers to files that are no longer installed. Only the
+// paths differ, because init copies the two template directories under
+// `.pharo-agent`.
+function pharoRouting() {
+  const templates = mcpTemplateDirectory();
+  const guide = fs.readFileSync(path.join(templates, "pharo.AGENTS.md"), "utf8");
+  const guidance = guide.indexOf("## Read First");
+  if (guidance === -1) {
+    throw new Error("The MCP agent guide no longer opens its guidance with ## Read First");
+  }
+  const routing = guide
+    .slice(guidance)
+    .replaceAll("pharo-references/", ".pharo-agent/references/")
+    .replaceAll("pharo-skills/", ".pharo-agent/skills/")
+    .replaceAll("skills/", ".pharo-agent/skills/")
+    .replaceAll(".pharo-agent/.pharo-agent/", ".pharo-agent/")
+    .trimEnd();
+  assertRoutingResolves(routing, templates);
+  return routing;
+}
+
+// A path the routing names must be a file MCP actually provides, so a renamed
+// template stops init here rather than pointing a reader at nothing.
+function assertRoutingResolves(routing, templates) {
+  const directoryNames = { references: "pharo-references", skills: "pharo-skills" };
+  for (const [target, directory, relative] of routing.matchAll(
+    /\.pharo-agent\/(references|skills)\/([\w./-]+\.md)/g,
+  )) {
+    if (!fs.existsSync(path.join(templates, directoryNames[directory], relative))) {
+      throw new Error(`The MCP agent guide names ${target}, which no template provides`);
+    }
+  }
+}
+
 function pharoGuide() {
   return `# Pharo project guide
 
@@ -124,32 +160,7 @@ everything this project opened.
 
 Image, Tonel, Iceberg, disk Git, and host processes are separate states.
 
-## Read first
-
-- Before Pharo source changes, read the project guidance. If absent, read the
-  local [coding rules](.pharo-agent/references/pharo-coding-rules.md) and
-  [coding style](.pharo-agent/references/pharo-coding-style.md).
-- Before loading a project, read
-  [.pharo-agent/skills/pharo-project-load/SKILL.md](.pharo-agent/skills/pharo-project-load/SKILL.md).
-- Before cross-version work, read
-  [.pharo-agent/skills/pharo-version-compat/SKILL.md](.pharo-agent/skills/pharo-version-compat/SKILL.md).
-- Before exporting image changes or changing Git state, read
-  [.pharo-agent/skills/pharo-image-git-handoff/SKILL.md](.pharo-agent/skills/pharo-image-git-handoff/SKILL.md).
-- Before reproducing smalltalkCI or GitHub failures, read
-  [.pharo-agent/skills/pharo-ci-repro/SKILL.md](.pharo-agent/skills/pharo-ci-repro/SKILL.md).
-- Before recovering a stopped standalone image, read
-  [.pharo-agent/skills/pharo-mcp-recovery/SKILL.md](.pharo-agent/skills/pharo-mcp-recovery/SKILL.md).
-- Before debugger sessions or repairs, read the local
-  [debugging guide](.pharo-agent/references/debugging.md).
-
-## Workflow
-
-1. Inspect the tool schema before acting; do not rely on remembered names.
-2. Prefer the least-mutating dedicated tool; use \`image_evaluate\` only when
-   no dedicated tool fits.
-3. Verify identity before mutation, make the narrowest change, then run focused
-   tests.
-4. Use the image-to-Git handoff skill before export or commit.
+${pharoRouting()}
 `;
 }
 

@@ -36,7 +36,7 @@ for (const host of supportedHosts) {
 
       const generated = [
         path.join(root, "pharo.AGENTS.md"),
-        path.join(root, ".pharo-agent", "references", "pharo-coding-rules.md"),
+        path.join(root, ".pharo-agent", "references", firstReferenceName()),
         path.join(root, ".pharo-agent", "skills", "pharo-project-load", "SKILL.md"),
       ].map((file) => [file, fs.readFileSync(file, "utf8")]);
       for (const [file] of generated) fs.appendFileSync(file, "\nStale generated content\n");
@@ -66,6 +66,16 @@ for (const host of ["codex", "claude", "opencode"]) {
       fs.rmSync(root, { recursive: true, force: true });
     }
   });
+}
+
+function referenceNames() {
+  return fs.readdirSync(path.join(mcpTemplateDirectory(), "pharo-references")).sort();
+}
+
+function firstReferenceName() {
+  const [name] = referenceNames();
+  assert.ok(name, "MCP provides no Pharo reference to refresh");
+  return name;
 }
 
 function temporaryDirectory() {
@@ -98,13 +108,21 @@ test("init adds a conditional Codex block without replacing existing guidance", 
       { mountRoot: ".pharo-agent/mounts" },
     );
     assert.ok(fs.existsSync(path.join(root, ".pharo-agent", "skills", "pharo-project-load", "SKILL.md")));
-    assert.ok(fs.existsSync(path.join(root, ".pharo-agent", "references", "pharo-coding-rules.md")));
-    assert.equal(
-      fs.readFileSync(path.join(root, ".pharo-agent", "references", "pharo-coding-rules.md"), "utf8"),
-      fs.readFileSync(path.join(mcpTemplateDirectory(), "pharo-references", "pharo-coding-rules.md"), "utf8"),
-    );
+    for (const name of referenceNames()) {
+      assert.equal(
+        fs.readFileSync(path.join(root, ".pharo-agent", "references", name), "utf8"),
+        fs.readFileSync(path.join(mcpTemplateDirectory(), "pharo-references", name), "utf8"),
+        name,
+      );
+    }
     const pharoGuide = fs.readFileSync(path.join(root, "pharo.AGENTS.md"), "utf8");
-    assert.match(pharoGuide, /\.pharo-agent\/references\/pharo-coding-rules\.md/);
+    // The guide takes its routing from MCP, so what it names is whatever that
+    // release ships: assert the links resolve rather than naming one of them.
+    const linked = [...pharoGuide.matchAll(/\.pharo-agent\/(references|skills)\/[\w./-]+\.md/g)];
+    assert.ok(linked.length > 0, "the guide links no reference or skill");
+    for (const [target] of linked) {
+      assert.ok(fs.existsSync(path.join(root, target)), target);
+    }
     assert.doesNotMatch(pharoGuide, /https?:\/\//);
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
