@@ -23,7 +23,7 @@ import {
   writeOpenImages,
 } from "./runtime.js";
 
-export const pifsRelease = "v0.7.0";
+export const pifsRelease = "v0.8.0";
 
 // The class-side PIFSServer messages this plugin sends into the image. The
 // release automation checks that a published PIFS still implements them: a pin
