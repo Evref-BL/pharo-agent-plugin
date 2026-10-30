@@ -74,7 +74,6 @@ jobs:
           }
 
           wait_for_version "@evref-bl/plexus" "$plexus_version"
-          wait_for_version "@evref-bl/plexus-gateway" "$plexus_version"
           wait_for_version "@evref-bl/pharo-mcp" "$mcp_version"
 
           temporary_directory="$(mktemp -d)"
@@ -107,8 +106,7 @@ jobs:
           fi
           npm install --save-exact --ignore-scripts \
             "@evref-bl/pharo-mcp@${MCP_VERSION}" \
-            "@evref-bl/plexus@${PLEXUS_VERSION}" \
-            "@evref-bl/plexus-gateway@${PLEXUS_VERSION}"
+            "@evref-bl/plexus@${PLEXUS_VERSION}"
           npm test
           npm run check
           echo "needed=true" >> "$GITHUB_OUTPUT"
