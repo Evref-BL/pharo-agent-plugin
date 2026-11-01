@@ -47,9 +47,36 @@ jobs:
           mcp_version="${EVENT_MCP_VERSION:-$INPUT_MCP_VERSION}"
           [[ "$plexus_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
           [[ "$mcp_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
-          test "$(npm view "@evref-bl/plexus@${plexus_version}" version)" = "$plexus_version"
-          test "$(npm view "@evref-bl/plexus-gateway@${plexus_version}" version)" = "$plexus_version"
-          test "$(npm view "@evref-bl/pharo-mcp@${mcp_version}" version)" = "$mcp_version"
+
+          # The dispatch that starts this workflow is sent the moment a publish
+          # returns, and npm's metadata lags behind it. Asked once, ten seconds
+          # after pharo-launcher-mcp 0.2.0 was published, the registry answered
+          # 404 for a version that installed without complaint minutes later,
+          # and that consumer's whole update stopped at this step. The install
+          # below needs these versions fetchable anyway, so wait for the
+          # registry rather than racing it.
+          wait_for_version() {
+            local package="$1" version="$2" attempt
+
+            for attempt in $(seq 1 10); do
+              if [ "$(npm view "${package}@${version}" version 2>/dev/null)" = "$version" ]; then
+                return 0
+              fi
+
+              echo "::notice::${package}@${version} is not in the registry yet (attempt ${attempt})"
+              if [ "$attempt" -lt 10 ]; then
+                sleep "$((attempt * 5))"
+              fi
+            done
+
+            echo "${package}@${version} never reached the registry." >&2
+            return 1
+          }
+
+          wait_for_version "@evref-bl/plexus" "$plexus_version"
+          wait_for_version "@evref-bl/plexus-gateway" "$plexus_version"
+          wait_for_version "@evref-bl/pharo-mcp" "$mcp_version"
+
           temporary_directory="$(mktemp -d)"
           trap 'rm -rf "$temporary_directory"' EXIT
           npm install --prefix "$temporary_directory" --ignore-scripts --no-package-lock --no-save "@evref-bl/plexus@${plexus_version}"
