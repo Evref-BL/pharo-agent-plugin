@@ -1,5 +1,5 @@
 import { createRequire } from "node:module";
-import { PlexusGateway } from "@evref-bl/plexus-gateway";
+import { PlexusGateway } from "@evref-bl/plexus/gateway";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import {

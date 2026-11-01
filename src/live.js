@@ -3,10 +3,10 @@ import fs from "node:fs";
 import path from "node:path";
 import {
   ScopedPharoLauncher,
-  closeProject,
   homeDependencyRepositoryCachePath,
-  openProject,
   resolvePlexusHomePath,
+  startProjectImage,
+  stopProjectImage,
 } from "@evref-bl/plexus";
 import { callImageTool } from "./gateway.js";
 import { readProjectConfig, writeProjectConfig } from "./project.js";
@@ -153,7 +153,7 @@ export function describeLifecycleFailure(failure) {
     .join("\n  ");
 }
 
-// openProject and closeProject throw on failure, carrying the failures on the error.
+// startProjectImage and stopProjectImage throw on failure, carrying the failures on the error.
 export async function runLifecycle(action, fallback) {
   try {
     return await action();
@@ -210,7 +210,7 @@ export async function openAgentImage(projectRoot, imageId) {
     await launcher.createImage(resolved);
   }
   const opened = await runLifecycle(
-    () => openProject({ projectRoot, imageIds: [resolved] }),
+    () => startProjectImage({ projectRoot, imageId: resolved }),
     `PLexus could not open image ${resolved}.`,
   );
   let image;
@@ -224,7 +224,7 @@ export async function openAgentImage(projectRoot, imageId) {
     const withoutMcp = unsupportedRunningImage(opened.state, resolved);
     if (!withoutMcp) {
       // The image is running but unusable to us, so do not leave it behind.
-      await closeProject({ projectRoot, imageIds: [resolved] }).catch(() => {});
+      await stopProjectImage({ projectRoot, imageId: resolved }).catch(() => {});
       throw error;
     }
     const open = { statePath: opened.statePath, imageId: resolved, mcp: false };
@@ -245,7 +245,7 @@ export async function openAgentImage(projectRoot, imageId) {
   } catch (error) {
     // The projection is half-started at best and nothing records it yet, so
     // close the image rather than leave an image and a mount nothing owns.
-    await closeProject({ projectRoot, imageIds: [resolved] }).catch(() => {});
+    await stopProjectImage({ projectRoot, imageId: resolved }).catch(() => {});
     throw error;
   }
   writeOpenImages(projectRoot, { ...openImages, [resolved]: { ...open, projectionPort } });
@@ -302,7 +302,7 @@ async function closeOneImage(projectRoot, openImages, imageId) {
     }
   }
   const closed = await runLifecycle(
-    () => closeProject({ projectRoot, imageIds: [imageId] }),
+    () => stopProjectImage({ projectRoot, imageId }),
     `PLexus could not close image ${imageId}.`,
   );
   return { stoppedImages: closed.stoppedImages.map((image) => image.id), projectionError };
