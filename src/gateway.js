@@ -17,28 +17,24 @@ import {
 // release to forget, and the host shows this one to the user.
 export const { version } = createRequire(import.meta.url)("../package.json");
 
-export async function imageGateway(projectRoot, open) {
+// A route source is the directory, not the route. PLexus re-reads the state
+// file and the image's endpoint handoff every time it resolves one, so there
+// is nothing to register here and nothing that can go stale between the call
+// that opened the image and this one.
+export function imageGateway(projectRoot, open) {
   const state = readJson(open.statePath);
   const { image, mcpServerId } = selectRunningImage(state, open.imageId);
   if (image.id !== open.imageId || mcpServerId !== open.mcpServerId) {
     throw new Error(`The PLexus image ${open.imageId} changed; run pharo-agent open again.`);
   }
   const gateway = new PlexusGateway({
+    routeSources: [{ projectRoot, statePath: open.statePath }],
     pharoScope: {
       projectId: state.projectId,
       workspaceId: state.workspaceId,
-      targetId: state.targetId,
     },
     pharoToolSchemaMcpServerId: mcpServerId,
   });
-  const registered = await gateway.registerProjectRoute({
-    projectRoot,
-    statePath: open.statePath,
-    state,
-  });
-  if (!registered.ok) {
-    throw new Error(registered.error ?? "Cannot register the PLexus route.");
-  }
   return { gateway, mcpServerId, image };
 }
 
@@ -54,7 +50,7 @@ export function toolFailureMessage(error, image) {
 }
 
 export async function callImageTool(projectRoot, open, toolName, argumentsValue) {
-  const { gateway, mcpServerId, image } = await imageGateway(projectRoot, open);
+  const { gateway, mcpServerId, image } = imageGateway(projectRoot, open);
   const result = await gateway.routeToImage({
     mcpServerId,
     toolName,
@@ -69,7 +65,7 @@ export async function callImageTool(projectRoot, open, toolName, argumentsValue)
 }
 
 export async function listImageTools(projectRoot, open) {
-  const { gateway } = await imageGateway(projectRoot, open);
+  const { gateway } = imageGateway(projectRoot, open);
   return gateway.refreshPharoTools();
 }
 

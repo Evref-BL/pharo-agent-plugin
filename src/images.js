@@ -37,7 +37,9 @@ export function listImages(projectRoot) {
   };
 }
 
-export function addImage(projectRoot, { id, template, category, profile }) {
+/** @param {{ id: string, template?: string, category?: string, profile?: string }} request */
+export function addImage(projectRoot, request) {
+  const { id, template, category, profile } = request;
   const config = readProjectConfig(projectRoot);
   const images = Array.isArray(config.images) ? config.images : [];
   if (images.some((image) => image.id === id)) {

@@ -34,7 +34,9 @@ an MCP server with Claude Code, Codex, or OpenCode.
 
 ## Validation
 
-- Run `npm test` and `npm run check` after JavaScript changes.
+- Run `npm test` and `npm run check` after JavaScript changes. `check` type-checks
+  the sources against the published types of the packages this one pins, so a pin
+  bump that retires an API fails there.
 - Use disposable directories for initializer tests. Preserve existing user
   guidance outside the plugin's marked managed block.
 - Do not claim live image or mount validation without a disposable image and

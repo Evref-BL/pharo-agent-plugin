@@ -4,7 +4,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { toolFailureMessage, toolResult, withImageSelector } from "../src/gateway.js";
+import { imageGateway, toolFailureMessage, toolResult, withImageSelector } from "../src/gateway.js";
 import {
   describeLifecycleFailure,
   imageCreationPlan,
@@ -29,6 +29,34 @@ import {
   unappliedPharoMcpPin,
   writeOpenImages,
 } from "../src/runtime.js";
+
+// The gateway is built from PLexus's published API, which moves under this
+// package by an automated pin bump. Calling a verb PLexus has retired fails
+// here and nowhere else, because every Pharo tool call goes through it.
+test("imageGateway builds a gateway over the project's route source", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "pharo-agent-gateway-"));
+  const statePath = path.join(root, "state.json");
+  fs.writeFileSync(statePath, JSON.stringify({
+    projectId: "project",
+    workspaceId: "workspace",
+    images: [{
+      id: "work",
+      status: "running",
+      pid: process.pid,
+      mcpServers: [{ id: "pharo-work" }],
+    }],
+  }));
+
+  const { gateway, mcpServerId, image } = imageGateway(root, {
+    statePath,
+    imageId: "work",
+    mcpServerId: "pharo-work",
+  });
+
+  assert.equal(mcpServerId, "pharo-work");
+  assert.equal(image.id, "work");
+  assert.equal(typeof gateway.routeToImage, "function");
+});
 
 test("selectRunningImage requires one routed image", () => {
   const selected = selectRunningImage({
@@ -244,7 +272,7 @@ test("a thrown lifecycle error is reported with its failures", async () => {
 
   await assert.rejects(
     () => runLifecycle(() => Promise.reject(thrown), "PLexus could not open image dev."),
-    (error) => {
+    (/** @type {Error} */ error) => {
       assert.match(error.message, /PLexus could not open image dev\./);
       assert.match(error.message, /dev: launch failed/);
       assert.match(error.message, /Inspect image info\./);
@@ -381,6 +409,7 @@ test("an image that kept its own Pharo MCP says the pin was not applied", () => 
     pharoMcpLoad: { state: "provided", loadPolicy: "ifMissing" },
   });
 
+  assert.ok(warning);
   assert.match(warning, /^Image p13 opened with the Pharo MCP it already had/);
   assert.match(warning, /mcp\.loadPolicy to always/);
 });
