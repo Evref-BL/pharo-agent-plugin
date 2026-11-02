@@ -181,6 +181,7 @@ function resolveInitProjectRoot(cwd) {
   return { projectRoot, createdProjectConfig: true };
 }
 
+/** @param {{ host: string, mountRoot?: string, cwd?: string }} options */
 export function initialize({ host, mountRoot, cwd = process.cwd() }) {
   const guideName = guideForHost(host);
   if (!guideName) {

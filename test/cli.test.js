@@ -39,6 +39,7 @@ test("help is answered wherever the word lands without initializing a project", 
   const binary = fileURLToPath(new URL("../bin/pharo-agent.js", import.meta.url));
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "pharo-agent-help-"));
   try {
+    /** @type {[string[], RegExp][]} */
     const cases = [
       [[], /pharo-agent image add <id> --template/],
       [["--help"], /pharo-agent init --host/],
