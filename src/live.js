@@ -360,14 +360,11 @@ export function agentImageStatus(projectRoot) {
 export async function listImageTemplates(projectRoot) {
   // `image add --template` takes a name the launcher must already know, and a
   // name that lands in two categories needs the category as well, so answer
-  // both rather than leave the caller guessing a magic string.
-  // PLexus answers `unknown`, so its shape is written down here. Listing
-  // without a category walks the groups and stamps `templateCategory` on each
-  // row; the launcher's own `category` is whatever it sent, and neither is
-  // promised when the sources list names no group at all.
-  const listed = /** @type {{ templates: { name?: string, category?: string, templateCategory?: string }[] }} */ (
-    await new ScopedPharoLauncher({ projectRoot }).listTemplates()
-  );
+  // both rather than leave the caller guessing a magic string. Listing without
+  // a category walks the groups and stamps `templateCategory` on each row, and
+  // neither it nor the launcher's own `category` is promised when the sources
+  // list names no group at all, which is why both are optional.
+  const listed = await new ScopedPharoLauncher({ projectRoot }).listTemplates();
   const counts = new Map();
   for (const template of listed.templates) {
     counts.set(template.name, (counts.get(template.name) ?? 0) + 1);
