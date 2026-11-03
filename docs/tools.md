@@ -50,6 +50,31 @@ Serves the advertised tools over stdio for a host that speaks MCP, scoped to
 this project. Each tool gains an optional `image` argument; everything else is
 the image's own schema.
 
+## A different MCP in the image
+
+The tools are the image's, so a project that wants other tools can serve
+another MCP. `mcp.loadScript` in `plexus.json` names a Smalltalk file the
+image files in at start; when that file is there it is what loads, and the
+pinned Pharo MCP release is the fallback for when it is not.
+
+What PLexus expects back is a class, not a registration call. Its startup
+script asks the image for a global named `MCP` and sends it four messages:
+
+```smalltalk
+mcp := (Smalltalk globals at: #MCP) new.
+mcp port: 0.
+mcp start.
+endpointPort := mcp port.
+```
+
+It records the port that came back and forwards calls there, so a server
+built on MCP's core and installed under that name is served like any other,
+with whatever tools it advertises. A load that leaves no `MCP` global fails
+the start and says so.
+
+`mcp.loadPolicy` decides whether the load happens at all: `ifMissing`, the
+default, leaves an image that already carries a server alone.
+
 ## Editing source as files
 
 `image start` mounts the image's source below `.pharo-agent/mounts`, with `tonel`,

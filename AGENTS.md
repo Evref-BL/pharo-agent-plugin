@@ -1,8 +1,9 @@
 # pharo-agent contributor guide
 
 `pharo-agent` is a terminal-first integration for Pharo projects. It installs
-only a selected agent host's conditional instruction shim. It must not register
-an MCP server with Claude Code, Codex, or OpenCode.
+only a selected agent host's conditional instruction shim. `init` must not
+write an MCP server into a host's configuration; the plugin declares one of its
+own, which a host starts only where the plugin is enabled.
 
 ## Boundaries
 
@@ -32,8 +33,10 @@ an MCP server with Claude Code, Codex, or OpenCode.
   copied skill only when necessary.
 - Pin runtime npm dependencies to released exact versions; do not use local
   workspace links or floating ranges.
-- The global setup skill must work from a plugin cache without `node_modules`.
-  Keep its one `npx` command pinned to the matching CLI release.
+- The setup skill and the declared MCP server must work from a plugin cache
+  without `node_modules`, which is what a host installing from git gives them.
+  Keep each one's `npx` command pinned to the matching CLI release, and let
+  `scripts/set-version.mjs` move both pins.
 
 ## Validation
 
