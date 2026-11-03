@@ -86,7 +86,14 @@ export function resultPrintString(result) {
 }
 
 /**
- * @param {{ images: { imageId: string, status: string }[] }} listed
+ * The status is spelled out rather than taken as a string: this read branched
+ * for a long time on "declared" and "failed", which PLexus does not report,
+ * so a declared image was never created and the launch that followed failed
+ * on an image that was not there. Naming the four it does report makes the
+ * typecheck reject a fifth.
+ *
+ * @param {{ images: { imageId: string,
+ *   status: "absent" | "stopped" | "starting" | "running" }[] }} listed
  * @param {string} imageId
  */
 export function imageCreationPlan(listed, imageId) {
@@ -94,12 +101,9 @@ export function imageCreationPlan(listed, imageId) {
   if (!summary) {
     throw new Error(`PLexus does not know image ${imageId}.`);
   }
-  // PLexus reports an image it has no runtime state for as declared.
-  if (summary.status === "declared") return "create";
-  // A creation that failed leaves runtime state that blocks both a retry and a
-  // fresh declaration of the same id, so the id would be spent for good. Clear
-  // it and create again.
-  if (summary.status === "failed") return "reset";
+  // "absent" is PLexus's word for no image file on disk, which is what a
+  // declared image looks like until something creates it.
+  if (summary.status === "absent") return "create";
   return "none";
 }
 
@@ -209,7 +213,6 @@ export async function openAgentImage(projectRoot, imageId) {
   const plan = imageCreationPlan(await launcher.listImages(), resolved);
   const created = plan !== "none";
   if (created) {
-    if (plan === "reset") await launcher.resetImage(resolved);
     await resolveTemplateCategory(projectRoot, launcher, resolved);
     await launcher.createImage(resolved);
   }

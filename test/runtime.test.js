@@ -215,28 +215,24 @@ test("an image tool result that is already an MCP result is passed through", () 
   assert.match(plain.content[0].text, /resultPrintString/);
 });
 
-test("an image PLexus has no runtime state for needs creating", () => {
+// The statuses are PLexus's own four. An earlier version of this test used
+// "declared" and "failed", which PLexus has never reported, so it passed while
+// every real image fell through to "none" and was launched without existing.
+test("an image with no file on disk needs creating", () => {
   const listed = {
     images: [
-      { imageId: "fresh", status: "declared" },
-      { imageId: "broken", status: "failed" },
-      { imageId: "stopped", status: "stopped" },
-      { imageId: "live", status: "running" },
+      { imageId: "fresh", status: /** @type {const} */ ("absent") },
+      { imageId: "stopped", status: /** @type {const} */ ("stopped") },
+      { imageId: "starting", status: /** @type {const} */ ("starting") },
+      { imageId: "live", status: /** @type {const} */ ("running") },
     ],
   };
 
   assert.equal(imageCreationPlan(listed, "fresh"), "create");
   assert.equal(imageCreationPlan(listed, "stopped"), "none");
+  assert.equal(imageCreationPlan(listed, "starting"), "none");
   assert.equal(imageCreationPlan(listed, "live"), "none");
   assert.throws(() => imageCreationPlan(listed, "other"), /does not know image other/);
-});
-
-test("a creation that failed is reset rather than stranding the image id", () => {
-  // PLexus refuses to create over runtime state and refuses to launch an image
-  // that was never created, so a failed image is unusable until it is reset.
-  const listed = { images: [{ imageId: "broken", status: "failed" }] };
-
-  assert.equal(imageCreationPlan(listed, "broken"), "reset");
 });
 
 test("a lifecycle failure reports the image, the remedy, and the launcher output", () => {
