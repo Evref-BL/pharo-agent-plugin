@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "image": {
+      "command": "node",
+      "args": ["${CLAUDE_PLUGIN_ROOT}/bin/pharo-agent.js", "mcp"]
+    }
+  }
+}

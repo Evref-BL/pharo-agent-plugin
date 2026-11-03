@@ -2,7 +2,8 @@ import { hostChoices, hostList } from "./hosts.js";
 import { usage } from "./help.js";
 import { initialize } from "./init.js";
 import { addImage, listImages, removeImage, useImage } from "./images.js";
-import { callImageTool, listImageTools, serveImagesMcp } from "./gateway.js";
+import { callImageTool, listImageTools } from "./gateway.js";
+import { serveImagesMcp } from "./mcpServer.js";
 import {
   agentImageStatus,
   closeAgentImage,
@@ -115,6 +116,16 @@ export async function main(args) {
     console.log(JSON.stringify({ ok: true, ...result }, null, 2));
     return;
   }
+  // Above the project lookup on purpose: a host starts this in whatever
+  // directory it likes, which may hold no project at all, and a server that
+  // exits is a broken server in the host's list. It resolves a project per
+  // request instead, so the reason reaches whoever calls a tool.
+  if (command === "mcp") {
+    const { image: mcpImage, rest: mcpArgs } = takeImageOption(rest);
+    requireNoArguments(command, mcpArgs);
+    await serveImagesMcp(findProjectRoot, mcpImage);
+    return;
+  }
   const projectRoot = findProjectRoot();
   if (command === "image") {
     const [subcommand, ...imageArgs] = rest;
@@ -164,11 +175,6 @@ export async function main(args) {
       throw new Error("status reports every open image and does not accept --image");
     }
     console.log(JSON.stringify({ ok: true, ...agentImageStatus(projectRoot) }, null, 2));
-    return;
-  }
-  if (command === "mcp") {
-    requireNoArguments(command, commandArgs);
-    await serveImagesMcp(projectRoot, image);
     return;
   }
   if (command === "pharo") {

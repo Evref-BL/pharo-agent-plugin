@@ -138,9 +138,13 @@ use <id>\` changes the default, and \`pharo-agent image remove <id>\` drops a
 declaration. Close an image before removing its declaration.
 
 Use \`pharo-agent open\` before live-image work and edit projected source under
-\`.pharo-agent/mounts\`. Call a tool with
-\`pharo-agent pharo <tool> [arguments-json]\`, and \`pharo-agent mcp\` exposes the
-image as a command-scoped stdio MCP server.
+\`.pharo-agent/mounts\`.
+
+With the pharo-agent plugin enabled for this project, the image's tools are MCP
+tools: start an image with \`image_start\` and call the rest by name. Without it,
+call a tool with \`pharo-agent pharo <tool> [arguments-json]\`, and
+\`pharo-agent mcp\` serves the same surface as a command-scoped stdio MCP
+server.
 
 \`pharo-agent pharo list\` names the tools the image advertises, which are the
 common ones rather than all of it. Find the rest through the catalogue rather

@@ -3,7 +3,7 @@ import path from "node:path";
 
 export const projectConfigFileName = "plexus.json";
 
-export function findProjectRoot(start = process.cwd()) {
+function projectRootAbove(start) {
   let directory = path.resolve(start);
 
   while (true) {
@@ -13,10 +13,26 @@ export function findProjectRoot(start = process.cwd()) {
 
     const parent = path.dirname(directory);
     if (parent === directory) {
-      throw new Error("No plexus.json found above the current directory");
+      return undefined;
     }
     directory = parent;
   }
+}
+
+export function findProjectRoot(start = process.cwd()) {
+  const found = projectRootAbove(start);
+  if (found) return found;
+
+  // A plugin's MCP server is started by the host, in the plugin's own
+  // directory rather than the project's, so the working directory leads
+  // nowhere. The host says where the project is, and that is only consulted
+  // here, after the ordinary search has failed, so running the CLI inside a
+  // project still answers with that project.
+  const hosted = process.env.CLAUDE_PROJECT_DIR;
+  const hostedRoot = hosted ? projectRootAbove(hosted) : undefined;
+  if (hostedRoot) return hostedRoot;
+
+  throw new Error("No plexus.json found above the current directory");
 }
 
 export function enclosingProjectRoot(start) {

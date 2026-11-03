@@ -1,14 +1,7 @@
 import { createRequire } from "node:module";
 import { PlexusGateway } from "@evref-bl/plexus/gateway";
-import { Server } from "@modelcontextprotocol/sdk/server/index.js";
-import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import {
-  CallToolRequestSchema,
-  ListToolsRequestSchema,
-} from "@modelcontextprotocol/sdk/types.js";
 import {
   readJson,
-  readOpenImage,
   selectRunningImage,
   unappliedPharoMcpPin,
 } from "./runtime.js";
@@ -88,29 +81,4 @@ export function toolResult(data) {
     return data;
   }
   return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
-}
-
-export async function serveImagesMcp(projectRoot, defaultImage) {
-  const defaultOpen = readOpenImage(projectRoot, defaultImage);
-  const tools = (await listImageTools(projectRoot, defaultOpen))
-    .map((tool) => withImageSelector(tool, defaultImage));
-
-  const server = new Server(
-    { name: "pharo-agent", version },
-    { capabilities: { tools: {} } },
-  );
-  server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools }));
-  server.setRequestHandler(CallToolRequestSchema, async (request) => {
-    // Listed tools are the common ones, not the whole catalogue, and the image
-    // answers for any tool it holds. Refusing a name this list does not carry
-    // would hide tools that tool_search just found, and the image's own error
-    // is the better answer for a name nothing holds.
-    const { image, ...argumentsValue } = request.params.arguments ?? {};
-    const open = readOpenImage(projectRoot, image);
-    return toolResult(
-      await callImageTool(projectRoot, open, request.params.name, argumentsValue),
-    );
-  });
-
-  await server.connect(new StdioServerTransport());
 }

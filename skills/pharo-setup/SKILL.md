@@ -13,8 +13,30 @@ npx --yes @evref-bl/pharo-agent@0.10.2 init --host claude
 
 Name the host this chat runs in: `--host claude` in Claude Code,
 `--host codex` in Codex, `--host opencode` in OpenCode.
-Do not configure an MCP server in the agent host. The command adds only a
-conditional instruction block, so Pharo guidance stays out of unrelated work.
+The command writes no host configuration. It adds a conditional instruction
+block and this project's own files, so Pharo guidance stays out of unrelated
+work.
+
+To get the image's tools as MCP tools in Claude Code, enable this plugin for
+this project rather than configuring a server by hand. Commit
+`.claude/settings.json`:
+
+```json
+{
+  "extraKnownMarketplaces": {
+    "evref-bl": {
+      "source": {
+        "source": "git",
+        "url": "https://github.com/Evref-BL/pharo-agent-plugin.git"
+      }
+    }
+  },
+  "enabledPlugins": { "pharo-agent@evref-bl": true }
+}
+```
+
+A host reads that file when a session starts, so the tools appear in the next
+one. Enabling it per project keeps every other project untouched.
 
 After upgrading the plugin/CLI, re-run the setup command from the project root
 with the same host to refresh the generated guide and copied skills/references.

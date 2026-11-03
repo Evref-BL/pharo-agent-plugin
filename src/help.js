@@ -57,8 +57,10 @@ const commands = {
   },
   mcp: {
     usage: "mcp [--image <id>]",
-    description: "Expose an open image's tools as a command-scoped stdio MCP server. Omit --image\n"
-      + "to use the project's default image. The server exits with this command.",
+    description: "Serve this project's images as a command-scoped stdio MCP server. Omit\n"
+      + "--image to use the project's default image. It starts whether or not an image\n"
+      + "is running: image_start starts one and the image's own tools join the list.\n"
+      + "server exits with this command, and the plugin's .mcp.json starts it for a host.",
     example: "mcp --image dev",
   },
   "pharo list": {
