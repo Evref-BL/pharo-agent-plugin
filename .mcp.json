@@ -2,7 +2,11 @@
   "mcpServers": {
     "image": {
       "command": "npx",
-      "args": ["--yes", "@evref-bl/pharo-agent@0.12.0", "mcp"]
+      "args": [
+        "--yes",
+        "@evref-bl/pharo-agent@0.12.1",
+        "mcp"
+      ]
     }
   }
 }
