@@ -77,8 +77,8 @@ test("the server starts and lists its lifecycle tools with no image open", () =>
     assert.match(initialize.instructions, /Pharo/);
     assert.deepEqual(
       tools.map((tool) => tool.name),
-      ["pharo_open", "pharo_status", "pharo_close"],
-      "a host starts this before anyone opens an image, so the list must not be empty",
+      ["image_start", "image_list", "image_stop"],
+      "a host starts this before anyone starts an image, so the list must not be empty",
     );
   } finally {
     fs.rmSync(cwd, { recursive: true, force: true });
@@ -108,7 +108,7 @@ test("a directory with no project still gets a server rather than a dead one", (
     const { served, tools } = listTools({ cwd: elsewhere, env: { CLAUDE_PROJECT_DIR: elsewhere } });
 
     assert.equal(served.status, 0, "a server that exits is a broken server in the host's list");
-    assert.deepEqual(tools.map((tool) => tool.name), ["pharo_open", "pharo_status", "pharo_close"]);
+    assert.deepEqual(tools.map((tool) => tool.name), ["image_start", "image_list", "image_stop"]);
   } finally {
     fs.rmSync(elsewhere, { recursive: true, force: true });
   }

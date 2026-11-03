@@ -23,9 +23,9 @@ image, running tests, finding senders and implementors, applying critiques,
 and projecting image source as files on disk.
 
 Search these tools whenever the task involves Pharo, Smalltalk, a Tonel
-package, or a .st file. Open an image with pharo_open before calling the
-image's own tools, which are listed once an image answers; pharo_status says
-what is already open.
+package, or a .st file. Start an image with image_start before calling the
+image's own tools, which are listed once an image answers; image_list says
+what is already running.
 
 The image advertises the common tools rather than all of it. Use tool_search
 and tool_get to find the rest, then call one by name like any other.`;
@@ -35,36 +35,37 @@ and tool_get to find the rest, then call one by name like any other.`;
 // empty list for the whole session and never learn that an image had opened.
 const lifecycleTools = [
   {
-    name: "pharo_open",
+    name: "image_start",
     description:
-      "Open this project's Pharo image and mount its source projection. "
-      + "The image's own tools are listed once it answers.",
+      "Start one of this project's Pharo images, creating it from its template "
+      + "when it does not exist yet, and mount its source projection. The "
+      + "image's own tools are listed once it answers.",
     inputSchema: {
       type: "object",
       properties: {
         image: {
           type: "string",
-          description: "Image id to open. Defaults to the project's default image.",
+          description: "Image id to start. Defaults to the project's default image.",
         },
       },
     },
   },
   {
-    name: "pharo_status",
+    name: "image_list",
     description:
-      "Report which of this project's images are open, with their routes and mounts.",
+      "Report which of this project's images are running, with their routes and mounts.",
     inputSchema: { type: "object", properties: {} },
   },
   {
-    name: "pharo_close",
+    name: "image_stop",
     description:
-      "Close an open image and stop the projection this project started for it.",
+      "Stop a running image and the source projection this project started for it.",
     inputSchema: {
       type: "object",
       properties: {
         image: {
           type: "string",
-          description: "Image id to close. Defaults to every image this project opened.",
+          description: "Image id to stop. Defaults to every image this project started.",
         },
       },
     },
@@ -113,16 +114,16 @@ export async function serveImagesMcp(resolveProjectRoot, defaultImage) {
 
     // Matched before the image's catalogue: these three names belong to this
     // server, and an image that happened to hold one must not decide what
-    // opening an image means.
-    if (request.params.name === "pharo_open") {
+    // starting an image means.
+    if (request.params.name === "image_start") {
       const opened = await openAgentImage(projectRoot, selected);
       await server.sendToolListChanged();
       return toolResult({ ok: true, ...opened });
     }
-    if (request.params.name === "pharo_status") {
+    if (request.params.name === "image_list") {
       return toolResult({ ok: true, ...agentImageStatus(projectRoot) });
     }
-    if (request.params.name === "pharo_close") {
+    if (request.params.name === "image_stop") {
       const closed = await closeAgentImage(projectRoot, selected);
       await server.sendToolListChanged();
       return toolResult({ ok: true, ...closed });

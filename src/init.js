@@ -141,7 +141,7 @@ Use \`pharo-agent open\` before live-image work and edit projected source under
 \`.pharo-agent/mounts\`.
 
 With the pharo-agent plugin enabled for this project, the image's tools are MCP
-tools: open an image with \`pharo_open\` and call the rest by name. Without it,
+tools: start an image with \`image_start\` and call the rest by name. Without it,
 call a tool with \`pharo-agent pharo <tool> [arguments-json]\`, and
 \`pharo-agent mcp\` serves the same surface as a command-scoped stdio MCP
 server.
