@@ -29,11 +29,18 @@ function parseInit(args) {
   return { host, mountRoot };
 }
 
+/**
+ * The template is required, and the loop below refuses the call without one,
+ * which the dynamic key assignment hides from the typechecker.
+ *
+ * @returns {{ id: string, template: string, category?: string, profile?: string }}
+ */
 function parseImageAdd(args) {
   const [id, ...rest] = args;
   if (!id || id.startsWith("--")) {
     throw new Error("image add requires an image id");
   }
+  /** @type {{ id: string, template?: string, category?: string, profile?: string }} */
   const parsed = { id };
   const options = {
     "--template": "template",
@@ -56,7 +63,7 @@ function parseImageAdd(args) {
   if (!parsed.template) {
     throw new Error("image add requires --template <name>");
   }
-  return parsed;
+  return { ...parsed, template: parsed.template };
 }
 
 // `image start` and `image stop` name their subject, like `image use` and

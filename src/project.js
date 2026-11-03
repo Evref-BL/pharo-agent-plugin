@@ -4,6 +4,8 @@ import path from "node:path";
 // Spelling them here made this package a second definition of another
 // package's format, free to drift from it without anything noticing.
 import {
+  createProjectConfigFile,
+  loadProjectConfig,
   plexusProjectConfigFileName,
   projectConfigPath as plexusProjectConfigPath,
 } from "@evref-bl/plexus";
@@ -61,36 +63,19 @@ export function pluginDirectory(projectRoot) {
   return path.join(projectRoot, ".pharo-agent");
 }
 
-export function projectIdentity(projectRoot) {
-  const name = path.basename(path.resolve(projectRoot));
-  const id = name
-    .replaceAll(/[^A-Za-z0-9._-]+/g, "-")
-    .replaceAll(/^-+|-+$/g, "")
-    .toLowerCase();
-  return { id: id || "pharo-project", name };
-}
-
+// Validated, not merely parsed: a malformed plexus.json then fails naming
+// what is wrong with it, rather than reaching PLexus as a shape it refuses
+// further in.
 export function readProjectConfig(projectRoot) {
-  const configPath = projectConfigPath(projectRoot);
-  try {
-    return JSON.parse(fs.readFileSync(configPath, "utf8"));
-  } catch (error) {
-    throw new Error(`Cannot read ${configPath}: ${error.message}`);
-  }
-}
-
-export function writeProjectConfig(projectRoot, config) {
-  fs.writeFileSync(projectConfigPath(projectRoot), `${JSON.stringify(config, null, 2)}\n`);
+  return loadProjectConfig(projectRoot);
 }
 
 export function createProjectConfig(projectRoot) {
-  const { id, name } = projectIdentity(projectRoot);
-  const config = { id, name, images: [] };
-  writeProjectConfig(projectRoot, config);
-  return config;
+  return createProjectConfigFile(projectRoot, {
+    name: path.basename(path.resolve(projectRoot)),
+  });
 }
 
 export function configuredImages(projectRoot) {
-  const config = readProjectConfig(projectRoot);
-  return Array.isArray(config.images) ? config.images : [];
+  return readProjectConfig(projectRoot).images;
 }

@@ -20,6 +20,7 @@ import {
   resultPrintString,
   runLifecycle,
 } from "../src/live.js";
+import { createProjectConfigFile, declareProjectImage } from "@evref-bl/plexus";
 import { classSideSelectors, missingSelectors } from "../scripts/check-pifs-selectors.mjs";
 import {
   runningImagesPath,
@@ -369,10 +370,14 @@ test("a tool call against an image started without MCP is refused with the reaso
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "pharo-agent-nomcp-"));
   try {
     fs.mkdirSync(path.join(root, ".pharo-agent"), { recursive: true });
-    fs.writeFileSync(
-      path.join(root, "plexus.json"),
-      JSON.stringify({ id: "p", name: "p", images: [{ id: "old" }] }),
-    );
+    // Declared the way a real project declares one, so the fixture cannot
+    // describe a config PLexus would refuse to load.
+    createProjectConfigFile(root, { name: "p" });
+    declareProjectImage(root, {
+      id: "old",
+      templateName: "Pharo 10.0 - 64bit",
+      loadScript: "pharo/load-mcp.st",
+    });
     fs.writeFileSync(
       path.join(root, ".pharo-agent", "config.json"),
       JSON.stringify({ defaultImage: "old" }),
