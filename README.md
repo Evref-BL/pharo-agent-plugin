@@ -35,8 +35,10 @@ the file ownership rules and [Images](docs/images.md) for image-side MCP updates
 
 Node 22.12 or later.
 
-The source projection currently supports macOS and needs
-[fuse-t](https://www.fuse-t.org/). Its daemon is downloaded for you.
+Images and their Pharo tools run anywhere Node does. The source projection is
+the exception: it needs macOS with [fuse-t](https://www.fuse-t.org/), whose
+daemon is downloaded for you. Everywhere else an image starts with its tools
+and says that the projection is not available, rather than failing.
 
 ## What the agent gets
 

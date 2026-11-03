@@ -7,8 +7,11 @@ import test from "node:test";
 import { imageGateway, toolFailureMessage, toolResult, withImageSelector } from "../src/gateway.js";
 import {
   describeLifecycleFailure,
+  fuseLibraryPath,
   imageCreationPlan,
   pharoMcpWarning,
+  projectionAvailability,
+  projectionUnavailableWarning,
   fetchPifsRelease,
   pifsRelease,
   pifsSelectors,
@@ -473,4 +476,42 @@ test("a state file that is gone leaves no image running", () => {
     recordedImageIsRunning({ imageId: "dev", statePath: path.join(os.tmpdir(), "pharo-agent-no-such-state.json") }),
     false,
   );
+});
+
+// PIFS needs macOS and fuse-t; PLexus and the Pharo MCP need neither. Before
+// this was checked, `image start` mounted unconditionally and stopped the
+// image when the mount failed, so no image could start on Linux or Windows,
+// or on a Mac without fuse-t.
+test("a source projection is offered only where it can be mounted", () => {
+  const withFuse = () => true;
+  const withoutFuse = () => false;
+
+  assert.deepEqual(
+    projectionAvailability({ platform: "darwin", exists: withFuse }),
+    { available: true },
+  );
+
+  const onLinux = projectionAvailability({ platform: "linux", exists: withFuse });
+  assert.equal(onLinux.available, false);
+  assert.match(onLinux.reason, /needs macOS and fuse-t/);
+  assert.match(onLinux.reason, /linux/);
+
+  const noFuse = projectionAvailability({ platform: "darwin", exists: withoutFuse });
+  assert.equal(noFuse.available, false);
+  assert.match(noFuse.reason, /brew install --cask fuse-t/);
+});
+
+test("the fuse-t library is looked for where its installer puts it", () => {
+  // A .pkg installer, so /usr/local whatever Homebrew's prefix is.
+  assert.equal(fuseLibraryPath, "/usr/local/lib/libfuse-t.dylib");
+});
+
+test("a missing projection says the image and its tools are still there", () => {
+  const warning = projectionUnavailableWarning(
+    "dev",
+    projectionAvailability({ platform: "linux", exists: () => false }).reason,
+  );
+
+  assert.match(warning, /Image dev is running with its Pharo tools/);
+  assert.match(warning, /no source projection/);
 });
