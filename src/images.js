@@ -4,13 +4,15 @@ import {
   readProjectConfig,
   writeProjectConfig,
 } from "./project.js";
-import { readConfig, readOpenImages, writeConfig } from "./runtime.js";
+import { defaultImageId, readConfig, readRunningImages, writeConfig } from "./runtime.js";
 
 export const defaultLoadScript = "pharo/load-mcp.st";
 
-function assertNoOpenImage(projectRoot, imageId, action) {
-  if (readOpenImages(projectRoot)[imageId]) {
-    throw new Error(`Image ${imageId} is open. Run pharo-agent close before ${action}.`);
+function assertNotRunning(projectRoot, imageId, action) {
+  if (readRunningImages(projectRoot)[imageId]) {
+    throw new Error(
+      `Image ${imageId} is running. Run pharo-agent image stop ${imageId} before ${action}.`,
+    );
   }
 }
 
@@ -21,19 +23,31 @@ function derivedImageName(projectRoot, imageId) {
 
 export function listImages(projectRoot) {
   const configured = configuredImages(projectRoot);
-  const open = readOpenImages(projectRoot);
-  const defaultImage = readConfig(projectRoot).defaultImage
-    ?? (configured.length === 1 ? configured[0].id : undefined);
+  const running = readRunningImages(projectRoot);
+  let defaultImage;
+  try {
+    defaultImage = defaultImageId(projectRoot);
+  } catch {
+    // Several declared and none chosen. The list is how a caller finds that
+    // out, so it answers rather than raising the question back at them.
+    defaultImage = undefined;
+  }
   return {
     ...(defaultImage ? { defaultImage } : {}),
-    images: configured.map((image) => ({
-      id: image.id,
-      imageName: image.imageName,
-      isDefault: image.id === defaultImage,
-      open: Boolean(open[image.id]),
-      templateName: image.create?.templateName,
-      templateCategory: image.create?.templateCategory,
-    })),
+    images: configured.map((image) => {
+      // The record repeats the id it is keyed by; everything else in it is
+      // runtime detail this list carries when the image is running.
+      const { imageId: _keyed, ...runtime } = running[image.id] ?? {};
+      return {
+        id: image.id,
+        imageName: image.imageName,
+        isDefault: image.id === defaultImage,
+        running: Boolean(running[image.id]),
+        ...runtime,
+        templateName: image.create?.templateName,
+        templateCategory: image.create?.templateCategory,
+      };
+    }),
   };
 }
 
@@ -92,7 +106,7 @@ export function removeImage(projectRoot, id) {
   if (!images.some((image) => image.id === id)) {
     throw new Error(`Image ${id} is not configured.`);
   }
-  assertNoOpenImage(projectRoot, id, "removing it");
+  assertNotRunning(projectRoot, id, "removing it");
   writeProjectConfig(projectRoot, {
     ...config,
     images: images.filter((image) => image.id !== id),

@@ -14,7 +14,7 @@ npx --yes @evref-bl/pharo-agent init --host <claude|codex|opencode>
 
 That is all of it. `init` writes the project's Pharo guidance and copies the
 workflow skills that guidance refers to. From there the agent registers the
-image the project needs, opens it and uses its tools by following what was
+image the project needs, starts it and uses its tools by following what was
 written; ask it for Pharo work as you would for anything else.
 
 ## Refreshing an existing project

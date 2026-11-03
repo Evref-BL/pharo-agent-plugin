@@ -19,15 +19,15 @@ import {
 } from "../src/live.js";
 import { classSideSelectors, missingSelectors } from "../scripts/check-pifs-selectors.mjs";
 import {
-  activePath,
-  readOpenImage,
-  readOpenImages,
+  runningImagesPath,
+  readRunningImage,
+  readRunningImages,
   imageProcessIsAlive,
-  openedImageIsAlive,
+  recordedImageIsRunning,
   selectRunningImage,
   smalltalkString,
   unappliedPharoMcpPin,
-  writeOpenImages,
+  writeRunningImages,
 } from "../src/runtime.js";
 
 // The gateway is built from PLexus's published API, which moves under this
@@ -151,37 +151,20 @@ test("selectRunningImage picks the named image out of several", () => {
   assert.throws(() => selectRunningImage(state), /exactly one running image/);
 });
 
-test("open images are recorded per image and read back", () => {
+test("running images are recorded per image and read back", () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "pharo-agent-runtime-"));
   try {
-    assert.deepEqual(readOpenImages(root), {});
+    assert.deepEqual(readRunningImages(root), {});
 
-    writeOpenImages(root, {
+    writeRunningImages(root, {
       dev: { imageId: "dev", mcpServerId: "pharo-dev", projectionPort: 1 },
       ci: { imageId: "ci", mcpServerId: "pharo-ci", projectionPort: 2 },
     });
-    assert.deepEqual(Object.keys(readOpenImages(root)), ["dev", "ci"]);
+    assert.deepEqual(Object.keys(readRunningImages(root)), ["dev", "ci"]);
 
-    writeOpenImages(root, {});
-    assert.deepEqual(readOpenImages(root), {});
-    assert.equal(fs.existsSync(activePath(root)), false);
-  } finally {
-    fs.rmSync(root, { recursive: true, force: true });
-  }
-});
-
-test("a single-image record written by an earlier release is still readable", () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), "pharo-agent-runtime-"));
-  try {
-    fs.mkdirSync(path.dirname(activePath(root)), { recursive: true });
-    fs.writeFileSync(
-      activePath(root),
-      `${JSON.stringify({ imageId: "dev", mcpServerId: "pharo-dev", projectionPort: 7 })}\n`,
-    );
-
-    assert.deepEqual(readOpenImages(root), {
-      dev: { imageId: "dev", mcpServerId: "pharo-dev", projectionPort: 7 },
-    });
+    writeRunningImages(root, {});
+    assert.deepEqual(readRunningImages(root), {});
+    assert.equal(fs.existsSync(runningImagesPath(root)), false);
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }
@@ -258,7 +241,7 @@ test("a lifecycle failure without extra detail still names the image", () => {
 });
 
 test("a thrown lifecycle error is reported with its failures", async () => {
-  const thrown = Object.assign(new Error("One or more project images failed to open"), {
+  const thrown = Object.assign(new Error("launch failed"), {
     result: {
       failures: [
         { imageId: "dev", message: "launch failed", action: "Inspect image info." },
@@ -267,9 +250,9 @@ test("a thrown lifecycle error is reported with its failures", async () => {
   });
 
   await assert.rejects(
-    () => runLifecycle(() => Promise.reject(thrown), "PLexus could not open image dev."),
+    () => runLifecycle(() => Promise.reject(thrown), "PLexus could not start image dev."),
     (/** @type {Error} */ error) => {
-      assert.match(error.message, /PLexus could not open image dev\./);
+      assert.match(error.message, /PLexus could not start image dev\./);
       assert.match(error.message, /dev: launch failed/);
       assert.match(error.message, /Inspect image info\./);
       return true;
@@ -376,10 +359,10 @@ test("an image outside the MCP contract is opened without tools, and says so", (
   });
 
   assert.match(warning, /Pharo 10 is outside the supported Pharo MCP range/);
-  assert.match(warning, /open without MCP tools or a source projection/);
+  assert.match(warning, /running without MCP tools or a source projection/);
 });
 
-test("a tool call against an image opened without MCP is refused with the reason", () => {
+test("a tool call against an image started without MCP is refused with the reason", () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "pharo-agent-nomcp-"));
   try {
     fs.mkdirSync(path.join(root, ".pharo-agent"), { recursive: true });
@@ -391,9 +374,9 @@ test("a tool call against an image opened without MCP is refused with the reason
       path.join(root, ".pharo-agent", "config.json"),
       JSON.stringify({ defaultImage: "old" }),
     );
-    writeOpenImages(root, { old: { imageId: "old", mcp: false } });
+    writeRunningImages(root, { old: { imageId: "old", mcp: false } });
 
-    assert.throws(() => readOpenImage(root, "old"), /offers no Pharo tools/);
+    assert.throws(() => readRunningImage(root, "old"), /offers no Pharo tools/);
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }
@@ -406,7 +389,7 @@ test("an image that kept its own Pharo MCP says the pin was not applied", () => 
   });
 
   assert.ok(warning);
-  assert.match(warning, /^Image p13 opened with the Pharo MCP it already had/);
+  assert.match(warning, /^Image p13 started with the Pharo MCP it already had/);
   assert.match(warning, /mcp\.loadPolicy to always/);
 });
 
@@ -426,7 +409,7 @@ test("a tool the image says it does not have names the unapplied pin", () => {
   );
 
   assert.match(message, /-32601/);
-  assert.match(message, /opened with the Pharo MCP it already had/);
+  assert.match(message, /started with the Pharo MCP it already had/);
 });
 
 test("an unrelated failure is reported as it is", () => {
@@ -464,30 +447,30 @@ test("a process that has exited is not alive", () => {
   assert.equal(imageProcessIsAlive(exited.pid), false);
 });
 
-test("an image is open only while its process is there", () => {
+test("an image counts as running only while its process is there", () => {
   const exited = spawnSync(process.execPath, ["-e", ""]);
 
   assert.equal(
-    openedImageIsAlive({ imageId: "dev", statePath: stateFileWith({ id: "dev", status: "running", pid: process.pid }) }),
+    recordedImageIsRunning({ imageId: "dev", statePath: stateFileWith({ id: "dev", status: "running", pid: process.pid }) }),
     true,
   );
   assert.equal(
-    openedImageIsAlive({ imageId: "dev", statePath: stateFileWith({ id: "dev", status: "running", pid: exited.pid }) }),
+    recordedImageIsRunning({ imageId: "dev", statePath: stateFileWith({ id: "dev", status: "running", pid: exited.pid }) }),
     false,
   );
   assert.equal(
-    openedImageIsAlive({ imageId: "dev", statePath: stateFileWith({ id: "dev", status: "stopped", pid: process.pid }) }),
+    recordedImageIsRunning({ imageId: "dev", statePath: stateFileWith({ id: "dev", status: "stopped", pid: process.pid }) }),
     false,
   );
   assert.equal(
-    openedImageIsAlive({ imageId: "other", statePath: stateFileWith({ id: "dev", status: "running", pid: process.pid }) }),
+    recordedImageIsRunning({ imageId: "other", statePath: stateFileWith({ id: "dev", status: "running", pid: process.pid }) }),
     false,
   );
 });
 
-test("a state file that is gone leaves no image open", () => {
+test("a state file that is gone leaves no image running", () => {
   assert.equal(
-    openedImageIsAlive({ imageId: "dev", statePath: path.join(os.tmpdir(), "pharo-agent-no-such-state.json") }),
+    recordedImageIsRunning({ imageId: "dev", statePath: path.join(os.tmpdir(), "pharo-agent-no-such-state.json") }),
     false,
   );
 });

@@ -120,7 +120,7 @@ outside generated/copied files and outside the host guide's managed block.
 Refreshing project files does not install a newer package or upgrade image tools.
 
 \`plexus.json\` declares this project's images. A freshly initialized
-project declares none; register one before the first \`pharo-agent open\`:
+project declares none; register one before the first \`pharo-agent image start\`:
 
 \`\`\`sh
 pharo-agent image templates
@@ -131,14 +131,14 @@ pharo-agent image add dev --template '<launcher template name>'
 \`image templates\` names the templates the launcher offers, with the category
 of each; a name two categories offer also needs \`--category <name>\`. Any
 version the launcher offers can be registered, and one outside the MCP range
-opens without MCP tools or a source projection, saying so.
+starts without MCP tools or a source projection, saying so.
 
 \`image add\` makes the first registered image the default. \`pharo-agent image
 use <id>\` changes the default, and \`pharo-agent image remove <id>\` drops a
-declaration. Close an image before removing its declaration.
+declaration. Stop an image before removing its declaration.
 
-Use \`pharo-agent open\` before live-image work and edit projected source under
-\`.pharo-agent/mounts\`.
+Use \`pharo-agent image start\` before live-image work and edit projected source
+under \`.pharo-agent/mounts\`.
 
 With the pharo-agent plugin enabled for this project, the image's tools are MCP
 tools: start an image with \`image_start\` and call the rest by name. Without it,
@@ -156,11 +156,11 @@ pharo-agent pharo tool_get '{"name":"repository_commit"}'
 pharo-agent pharo repository_commit '{"name":"MCP","message":"..."}'
 \`\`\`
 
-Several images can be open at once. Every image-facing command takes
-\`--image <id>\`; without it the default image answers. \`pharo-agent open
---image <id>\` opens another image without closing the first,
-\`pharo-agent status\` lists what is open, and \`pharo-agent close\` closes
-everything this project opened.
+Several images can run at once. \`pharo-agent image start <id>\` and
+\`pharo-agent image stop <id>\` name their image, \`pharo\` and \`mcp\` take
+\`--image <id>\`, and without either the default image answers.
+\`pharo-agent image list\` says which are running, and
+\`pharo-agent image stop --all\` stops every one this project started.
 
 Image, Tonel, Iceberg, disk Git, and host processes are separate states.
 

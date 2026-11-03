@@ -4,7 +4,7 @@ The commands the project's Pharo guidance hands to the agent, written out here
 for a human reading along.
 
 A project declares its images in `plexus.json`. Declaring one does not create
-it; the first `open` does.
+it; the first `image start` does.
 
 ## Choosing a template
 
@@ -23,24 +23,27 @@ pharo-agent image add old --template 'Pharo 10.0 - 64bit' --category 'Pharo Mooc
 
 ## Managing declarations
 
-`image list` shows what the project declares and which is the default.
-`image use <id>` changes the default, and `image remove <id>` drops a
-declaration. An open image has to be closed before its declaration goes.
+`image list` shows what the project declares, which is the default, and the
+mount and projection port of each image that is running. `image use <id>`
+changes the default, and `image remove <id>` drops a declaration. A running
+image has to be stopped before its declaration goes.
 
 ## Several images at once
 
-`open`, `close`, `pharo` and `mcp` take `--image <id>`; without it the default
-image answers, so a project with one image never names an image at all.
+`image start <id>` and `image stop <id>` name their image, the way
+`image use <id>` and `image remove <id>` do. `pharo` and `mcp` take
+`--image <id>`, which scopes a call rather than naming a subject. Without
+either, the default image answers, so a project with one image never names an
+image at all.
 
-`open --image <id>` adds an image without closing the others. `close` without
-`--image` closes every image this project opened. `status` takes no `--image`,
-because it reports all of them. Over `mcp`, each Pharo tool takes the same
-optional `image` argument.
+`image start <id>` adds an image without stopping the others, and
+`image stop --all` stops every image this project started. Over `mcp`, each
+Pharo tool takes the same optional `image` argument.
 
 ## Pharo versions outside the MCP range
 
 Any version the launcher offers can be declared. MCP and the source projection
-support a range of versions, and an image outside it still opens:
+support a range of versions, and an image outside it still starts:
 
 ```json
 { "ok": true, "imageId": "old", "mcp": false,
@@ -56,28 +59,28 @@ An image that already carries a Pharo MCP keeps it: `mcp.loadPolicy` defaults
 to `ifMissing`, so the version the project pins is not loaded over one that is
 already there. That is what the policy is for, and the image works, but its
 tools are whatever that MCP has rather than what this project was written
-against. `open` says so:
+against. `image start` says so:
 
 ```json
 { "ok": true, "imageId": "p13",
-  "warning": "Image p13 opened with the Pharo MCP it already had, ..." }
+  "warning": "Image p13 started with the Pharo MCP it already had, ..." }
 ```
 
 A `-32601` from such an image repeats the warning: a tool that is plainly in
 the catalogue, and answers that it does not exist, is otherwise a puzzle.
 Recreate the image to pick the pinned version up, or set `mcp.loadPolicy` to
-`always` in `plexus.json` to load it on every open.
+`always` in `plexus.json` to load it on every start.
 
 ## An image that is no longer running
 
-`open` on an image this project already opened answers `alreadyOpen` — but
-only after checking that the image is still there. A Pharo image can exit on
-its own, and the record of having opened it outlives the process. Answering
-from the record alone hands back an endpoint nothing answers, and every later
-`open` does it again.
+`image start` on an image this project already started answers
+`alreadyRunning` — but only after checking that the image is still there. A
+Pharo image can exit on its own, and the record of having started it outlives
+the process. Answering from the record alone hands back an endpoint nothing
+answers, and every later `image start` does it again.
 
-When the process is gone the record goes with it and the image is opened
-again, which `open` reports:
+When the process is gone the record goes with it and the image is started
+again, which `image start` reports:
 
 ```json
 { "ok": true, "imageId": "scratch", "restarted": true, "mountPath": "..." }
@@ -85,6 +88,6 @@ again, which `open` reports:
 
 ## Where things live
 
-`.pharo-agent/mounts` holds the projections, `.pharo-agent/runtime` the state
-of what is open. Both are git-ignored. Pass `--mount-root <path>` to `init` to
-project somewhere else.
+`.pharo-agent/mounts` holds the projections, `.pharo-agent/runtime` the record
+of what is running. Both are git-ignored. Pass `--mount-root <path>` to `init`
+to project somewhere else.

@@ -11,8 +11,9 @@ import {
   version,
   withImageSelector,
 } from "./gateway.js";
-import { agentImageStatus, closeAgentImage, openAgentImage } from "./live.js";
-import { readOpenImage } from "./runtime.js";
+import { listImages } from "./images.js";
+import { startAgentImage, stopAgentImage } from "./live.js";
+import { readRunningImage } from "./runtime.js";
 
 // The host loads only tool names and these instructions at session start and
 // defers the rest, so this is what decides whether Pharo tools are searched
@@ -30,9 +31,9 @@ what is already running.
 The image advertises the common tools rather than all of it. Use tool_search
 and tool_get to find the rest, then call one by name like any other.`;
 
-// Listed whether or not an image is open, so the list is never empty. A host
-// that caches tools and ignores tools/list_changed would otherwise hold an
-// empty list for the whole session and never learn that an image had opened.
+// Listed whether or not an image is running, so the list is never empty. A
+// host that caches tools and ignores tools/list_changed would otherwise hold
+// an empty list for the whole session and never learn that one had started.
 const lifecycleTools = [
   {
     name: "image_start",
@@ -53,7 +54,8 @@ const lifecycleTools = [
   {
     name: "image_list",
     description:
-      "Report which of this project's images are running, with their routes and mounts.",
+      "List this project's declared images, which are running, and the route "
+      + "and mount of each running one.",
     inputSchema: { type: "object", properties: {} },
   },
   {
@@ -65,7 +67,11 @@ const lifecycleTools = [
       properties: {
         image: {
           type: "string",
-          description: "Image id to stop. Defaults to every image this project started.",
+          description: "Image id to stop. Defaults to the project's default image.",
+        },
+        all: {
+          type: "boolean",
+          description: "Stop every image this project started, instead of one.",
         },
       },
     },
@@ -73,19 +79,19 @@ const lifecycleTools = [
 ];
 
 // Resolved per request rather than once at startup. A host starts this server
-// when its session starts, which is before anyone has opened an image, so
+// when its session starts, which is before anyone has started an image, so
 // resolving then meant the server died on its first line.
-async function openImageTools(projectRoot, defaultImage) {
-  let open;
+async function runningImageTools(projectRoot, defaultImage) {
+  let running;
   try {
-    open = readOpenImage(projectRoot, defaultImage);
+    running = readRunningImage(projectRoot, defaultImage);
   } catch {
-    // No image open, none configured, or one open without MCP. The image
+    // No image running, none configured, or one running without MCP. The image
     // contributes no tools yet and the lifecycle tools say how to change that.
     return [];
   }
-  return (await listImageTools(projectRoot, open))
-    .map((tool) => withImageSelector(tool, open.imageId));
+  return (await listImageTools(projectRoot, running))
+    .map((tool) => withImageSelector(tool, running.imageId));
 }
 
 export async function serveImagesMcp(resolveProjectRoot, defaultImage) {
@@ -103,11 +109,13 @@ export async function serveImagesMcp(resolveProjectRoot, defaultImage) {
       // nothing, so the host has a server that works and a call can say why.
       return { tools: lifecycleTools };
     }
-    return { tools: [...lifecycleTools, ...(await openImageTools(projectRoot, defaultImage))] };
+    return {
+      tools: [...lifecycleTools, ...(await runningImageTools(projectRoot, defaultImage))],
+    };
   });
 
   server.setRequestHandler(CallToolRequestSchema, async (request) => {
-    const { image, ...argumentsValue } = request.params.arguments ?? {};
+    const { image, all, ...argumentsValue } = request.params.arguments ?? {};
     const selected = image ?? defaultImage;
     // Throws when there is no project, which is the answer the caller needs.
     const projectRoot = resolveProjectRoot();
@@ -116,26 +124,28 @@ export async function serveImagesMcp(resolveProjectRoot, defaultImage) {
     // server, and an image that happened to hold one must not decide what
     // starting an image means.
     if (request.params.name === "image_start") {
-      const opened = await openAgentImage(projectRoot, selected);
+      const started = await startAgentImage(projectRoot, selected);
       await server.sendToolListChanged();
-      return toolResult({ ok: true, ...opened });
+      return toolResult({ ok: true, ...started });
     }
     if (request.params.name === "image_list") {
-      return toolResult({ ok: true, ...agentImageStatus(projectRoot) });
+      return toolResult({ ok: true, ...listImages(projectRoot) });
     }
     if (request.params.name === "image_stop") {
-      const closed = await closeAgentImage(projectRoot, selected);
+      const stopped = all
+        ? await stopAgentImage(projectRoot, undefined, { all: true })
+        : await stopAgentImage(projectRoot, selected);
       await server.sendToolListChanged();
-      return toolResult({ ok: true, ...closed });
+      return toolResult({ ok: true, ...stopped });
     }
 
     // Listed tools are the common ones, not the whole catalogue, and the image
     // answers for any tool it holds. Refusing a name this list does not carry
     // would hide tools that tool_search just found, and the image's own error
     // is the better answer for a name nothing holds.
-    const open = readOpenImage(projectRoot, selected);
+    const running = readRunningImage(projectRoot, selected);
     return toolResult(
-      await callImageTool(projectRoot, open, request.params.name, argumentsValue),
+      await callImageTool(projectRoot, running, request.params.name, argumentsValue),
     );
   });
 

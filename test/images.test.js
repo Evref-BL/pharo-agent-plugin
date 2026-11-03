@@ -5,7 +5,7 @@ import path from "node:path";
 import test from "node:test";
 import { addImage, listImages, removeImage, useImage } from "../src/images.js";
 import { createProjectConfig } from "../src/project.js";
-import { writeConfig, writeOpenImages } from "../src/runtime.js";
+import { writeConfig, writeRunningImages } from "../src/runtime.js";
 
 function temporaryProject() {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "pharo-agent-images-"));
@@ -15,8 +15,8 @@ function temporaryProject() {
   return root;
 }
 
-function openImage(root, imageId) {
-  writeOpenImages(root, {
+function runImage(root, imageId) {
+  writeRunningImages(root, {
     [imageId]: { imageId, mcpServerId: "server", mountPath: "/tmp/mount", projectionPort: 1 },
   });
 }
@@ -69,31 +69,36 @@ test("registering a duplicate image id is refused", () => {
   }
 });
 
-test("an open image cannot be removed", () => {
+test("a running image cannot be removed", () => {
   const root = temporaryProject();
   try {
     addImage(root, { id: "dev", template: "Pharo 13" });
-    openImage(root, "dev");
+    runImage(root, "dev");
 
-    assert.throws(() => removeImage(root, "dev"), /Run pharo-agent close/);
+    assert.throws(() => removeImage(root, "dev"), /Run pharo-agent image stop dev/);
     assert.deepEqual(configuredImages(root).map((image) => image.id), ["dev"]);
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }
 });
 
-test("the default image can change while another image is open", () => {
+test("the default image can change while another image is running", () => {
   const root = temporaryProject();
   try {
     addImage(root, { id: "dev", template: "Pharo 13" });
     addImage(root, { id: "ci", template: "Pharo 12" });
-    openImage(root, "dev");
+    runImage(root, "dev");
 
     assert.deepEqual(useImage(root, "ci"), { defaultImage: "ci" });
     assert.equal(listImages(root).defaultImage, "ci");
     assert.deepEqual(
-      listImages(root).images.map((image) => image.open),
+      listImages(root).images.map((image) => image.running),
       [true, false],
+    );
+    // The list carries what `status` used to answer separately.
+    assert.deepEqual(
+      listImages(root).images.map((image) => image.projectionPort),
+      [1, undefined],
     );
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
@@ -113,12 +118,12 @@ test("removing the default image clears it", () => {
   }
 });
 
-test("an unopened image is removed", () => {
+test("an image that is not running is removed", () => {
   const root = temporaryProject();
   try {
     addImage(root, { id: "dev", template: "Pharo 13" });
     addImage(root, { id: "ci", template: "Pharo 12" });
-    openImage(root, "dev");
+    runImage(root, "dev");
 
     assert.deepEqual(removeImage(root, "ci"), { removedImageId: "ci" });
     assert.deepEqual(configuredImages(root).map((image) => image.id), ["dev"]);

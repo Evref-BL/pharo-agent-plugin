@@ -26,11 +26,15 @@ async function inProject(run) {
   }
 }
 
-test("status refuses --image instead of ignoring it", async () => {
+test("image start takes one id and nothing else", async () => {
   await inProject(async () => {
     await assert.rejects(
-      () => main(["status", "--image", "dev"]),
-      /status reports every open image and does not accept --image/,
+      () => main(["image", "start", "dev", "extra"]),
+      /image start takes one image id/,
+    );
+    await assert.rejects(
+      () => main(["image", "start", "--all"]),
+      /image start does not accept --all/,
     );
   });
 });
@@ -49,13 +53,12 @@ test("help is answered wherever the word lands without initializing a project", 
       [["help", "init"], /required agent host/],
       [["image", "--help"], /pharo-agent image templates/],
       [["image", "add", "--help"], /first declared image becomes the default/],
-      [["image", "list", "--help"], /recorded open state/],
+      [["image", "list", "--help"], /mount and\n?projection port/],
       [["image", "templates", "--help"], /available launcher templates/],
       [["image", "use", "--help"], /project's default/],
       [["image", "remove", "--help"], /image files are kept/],
-      [["open", "--help"], /Other open images stay open/],
-      [["close", "--help"], /Omitting --image closes all images/],
-      [["status", "--help"], /does not accept --image/],
+      [["image", "start", "--help"], /Images already running stay running/],
+      [["image", "stop", "--help"], /--all to stop every image/],
       [["mcp", "--help"], /command-scoped stdio MCP server/],
       [["pharo", "--help"], /JSON object and default to \{\}/],
       [["pharo", "list", "--help"], /advertised tools/],

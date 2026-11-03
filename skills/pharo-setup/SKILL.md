@@ -46,7 +46,8 @@ existing settings. Image declarations, runtime state, and live image code are
 preserved. This refresh does not install a newer package or upgrade image tools.
 
 Setup initializes the current directory, creating `plexus.json` with
-no image when it is absent. Register one before the first `pharo-agent open`:
+no image when it is absent. Register one before the first
+`pharo-agent image start`:
 
 ```sh
 pharo-agent image templates

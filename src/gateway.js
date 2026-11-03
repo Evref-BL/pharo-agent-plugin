@@ -13,15 +13,15 @@ export const { version } = createRequire(import.meta.url)("../package.json");
 // A route source is the directory, not the route. PLexus re-reads the state
 // file and the image's endpoint handoff every time it resolves one, so there
 // is nothing to register here and nothing that can go stale between the call
-// that opened the image and this one.
-export function imageGateway(projectRoot, open) {
-  const state = readJson(open.statePath);
-  const { image, mcpServerId } = selectRunningImage(state, open.imageId);
-  if (image.id !== open.imageId || mcpServerId !== open.mcpServerId) {
-    throw new Error(`The PLexus image ${open.imageId} changed; run pharo-agent open again.`);
+// that started the image and this one.
+export function imageGateway(projectRoot, running) {
+  const state = readJson(running.statePath);
+  const { image, mcpServerId } = selectRunningImage(state, running.imageId);
+  if (image.id !== running.imageId || mcpServerId !== running.mcpServerId) {
+    throw new Error(`The PLexus image ${running.imageId} changed; run pharo-agent image start again.`);
   }
   const gateway = new PlexusGateway({
-    routeSources: [{ projectRoot, statePath: open.statePath }],
+    routeSources: [{ projectRoot, statePath: running.statePath }],
     pharoScope: {
       projectId: state.projectId,
       workspaceId: state.workspaceId,
@@ -42,8 +42,8 @@ export function toolFailureMessage(error, image) {
   return unappliedPin ? `${error}\n${unappliedPin}` : error;
 }
 
-export async function callImageTool(projectRoot, open, toolName, argumentsValue) {
-  const { gateway, mcpServerId, image } = imageGateway(projectRoot, open);
+export async function callImageTool(projectRoot, running, toolName, argumentsValue) {
+  const { gateway, mcpServerId, image } = imageGateway(projectRoot, running);
   const result = await gateway.routeToImage({
     mcpServerId,
     toolName,
@@ -57,8 +57,8 @@ export async function callImageTool(projectRoot, open, toolName, argumentsValue)
   );
 }
 
-export async function listImageTools(projectRoot, open) {
-  const { gateway } = imageGateway(projectRoot, open);
+export async function listImageTools(projectRoot, running) {
+  const { gateway } = imageGateway(projectRoot, running);
   return gateway.refreshPharoTools();
 }
 

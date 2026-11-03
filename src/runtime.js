@@ -6,8 +6,8 @@ export function runtimeDirectory(projectRoot) {
   return path.join(pluginDirectory(projectRoot), "runtime");
 }
 
-export function activePath(projectRoot) {
-  return path.join(runtimeDirectory(projectRoot), "active.json");
+export function runningImagesPath(projectRoot) {
+  return path.join(runtimeDirectory(projectRoot), "running.json");
 }
 
 export function readJson(filePath) {
@@ -30,23 +30,22 @@ export function writeConfig(projectRoot, config) {
   fs.writeFileSync(configPath(projectRoot), `${JSON.stringify(config, null, 2)}\n`);
 }
 
-export function readOpenImages(projectRoot) {
-  const filePath = activePath(projectRoot);
+export function readRunningImages(projectRoot) {
+  const filePath = runningImagesPath(projectRoot);
   if (!fs.existsSync(filePath)) return {};
   const recorded = readJson(filePath);
-  if (recorded && typeof recorded.images === "object" && recorded.images !== null) {
-    return recorded.images;
-  }
-  return typeof recorded?.imageId === "string" ? { [recorded.imageId]: recorded } : {};
+  return recorded && typeof recorded.images === "object" && recorded.images !== null
+    ? recorded.images
+    : {};
 }
 
-export function writeOpenImages(projectRoot, images) {
+export function writeRunningImages(projectRoot, images) {
   if (Object.keys(images).length === 0) {
-    fs.rmSync(activePath(projectRoot), { force: true });
+    fs.rmSync(runningImagesPath(projectRoot), { force: true });
     return;
   }
   fs.mkdirSync(runtimeDirectory(projectRoot), { recursive: true });
-  fs.writeFileSync(activePath(projectRoot), `${JSON.stringify({ images }, null, 2)}\n`);
+  fs.writeFileSync(runningImagesPath(projectRoot), `${JSON.stringify({ images }, null, 2)}\n`);
 }
 
 export function defaultImageId(projectRoot) {
@@ -70,7 +69,7 @@ export function defaultImageId(projectRoot) {
   }
   throw new Error(
     `Several images are configured (${images.map((image) => image.id).join(", ")}); `
-      + "choose one with pharo-agent image use <id>, or pass --image <id>.",
+      + "choose one with pharo-agent image use <id>, or name one.",
   );
 }
 
@@ -82,26 +81,26 @@ export function resolveImageId(projectRoot, imageId) {
   return imageId;
 }
 
-export function readOpenImage(projectRoot, imageId) {
+export function readRunningImage(projectRoot, imageId) {
   const resolved = resolveImageId(projectRoot, imageId);
-  const open = readOpenImages(projectRoot)[resolved];
-  if (!open) {
+  const running = readRunningImages(projectRoot)[resolved];
+  if (!running) {
     throw new Error(
-      `Image ${resolved} is not open. Run pharo-agent open${imageId ? ` --image ${resolved}` : ""} first.`,
+      `Image ${resolved} is not running. Run pharo-agent image start ${resolved} first.`,
     );
   }
-  if (open.mcp === false) {
+  if (running.mcp === false) {
     throw new Error(
-      `Image ${resolved} is open without MCP, so it offers no Pharo tools. `
+      `Image ${resolved} is running without MCP, so it offers no Pharo tools. `
         + "Register an image on a Pharo version the MCP contract supports to use them.",
     );
   }
-  return open;
+  return running;
 }
 
-// A record in the project's runtime state says this project opened the image,
+// A record in the project's runtime state says this project started the image,
 // not that the image is still there. PLexus reclaims a dead image's port and
-// relaunches on the next open, so the only thing standing between a crashed
+// relaunches on the next start, so the only thing standing between a crashed
 // image and a working one is believing the record.
 export function imageProcessIsAlive(pid) {
   if (!Number.isInteger(pid) || pid <= 0) return false;
@@ -114,14 +113,14 @@ export function imageProcessIsAlive(pid) {
   }
 }
 
-export function openedImageIsAlive(open) {
+export function recordedImageIsRunning(record) {
   let state;
   try {
-    state = readJson(open.statePath);
+    state = readJson(record.statePath);
   } catch {
     return false;
   }
-  const image = (state.images ?? []).find((candidate) => candidate.id === open.imageId);
+  const image = (state.images ?? []).find((candidate) => candidate.id === record.imageId);
   return image?.status === "running" && imageProcessIsAlive(image.pid);
 }
 
@@ -164,7 +163,7 @@ export function selectRunningImage(state, imageId) {
 // written against. PLexus records it; this says it.
 export function unappliedPharoMcpPin(image) {
   if (image?.pharoMcpLoad?.state !== "provided") return undefined;
-  return `Image ${image.id} opened with the Pharo MCP it already had, so the version this project pins`
+  return `Image ${image.id} started with the Pharo MCP it already had, so the version this project pins`
     + " was not loaded and its tools may differ from the ones this project expects."
     + " Recreate the image, or set mcp.loadPolicy to always.";
 }

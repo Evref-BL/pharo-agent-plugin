@@ -52,7 +52,7 @@ the image's own schema.
 
 ## Editing source as files
 
-`open` mounts the image's source below `.pharo-agent/mounts`, with `tonel`,
+`image start` mounts the image's source below `.pharo-agent/mounts`, with `tonel`,
 `repositories`, `critiques` and `errors` directories. Reading and editing those
 files is often simpler than calling a tool, and the two views are of the same
 live image.

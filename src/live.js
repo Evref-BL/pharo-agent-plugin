@@ -11,16 +11,15 @@ import {
 import { callImageTool } from "./gateway.js";
 import { readProjectConfig, writeProjectConfig } from "./project.js";
 import {
-  defaultImageId,
-  openedImageIsAlive,
   readConfig,
-  readOpenImages,
+  readRunningImages,
+  recordedImageIsRunning,
   resolveImageId,
   resolveMountPath,
   selectRunningImage,
   smalltalkString,
   unappliedPharoMcpPin,
-  writeOpenImages,
+  writeRunningImages,
 } from "./runtime.js";
 
 export const pifsRelease = "v0.9.2";
@@ -193,19 +192,19 @@ export function fetchPifsRelease(cloneDirectory, release = pifsRelease) {
   return git("fetch", "--tags", "--quiet", "origin");
 }
 
-export async function openAgentImage(projectRoot, imageId) {
+export async function startAgentImage(projectRoot, imageId) {
   const resolved = resolveImageId(projectRoot, imageId);
-  let openImages = readOpenImages(projectRoot);
+  let runningImages = readRunningImages(projectRoot);
   let restarted = false;
-  if (openImages[resolved]) {
-    if (openedImageIsAlive(openImages[resolved])) {
-      return { alreadyOpen: true, ...openImages[resolved] };
+  if (runningImages[resolved]) {
+    if (recordedImageIsRunning(runningImages[resolved])) {
+      return { alreadyRunning: true, ...runningImages[resolved] };
     }
-    // The image this record names has exited. Forget it and open again,
-    // rather than hand back an endpoint nothing answers and say it is open.
-    const { [resolved]: exited, ...remaining } = openImages;
-    openImages = remaining;
-    writeOpenImages(projectRoot, openImages);
+    // The image this record names has exited. Forget it and start again,
+    // rather than hand back an endpoint nothing answers and call it running.
+    const { [resolved]: exited, ...remaining } = runningImages;
+    runningImages = remaining;
+    writeRunningImages(projectRoot, runningImages);
     restarted = true;
   }
   fetchPifsRelease(pifsCloneDirectory(projectRoot));
@@ -216,46 +215,46 @@ export async function openAgentImage(projectRoot, imageId) {
     await resolveTemplateCategory(projectRoot, launcher, resolved);
     await launcher.createImage(resolved);
   }
-  const opened = await runLifecycle(
+  const started = await runLifecycle(
     () => startProjectImage({ projectRoot, imageId: resolved }),
-    `PLexus could not open image ${resolved}.`,
+    `PLexus could not start image ${resolved}.`,
   );
   let image;
   let mcpServerId;
   try {
-    ({ image, mcpServerId } = selectRunningImage(opened.state, resolved));
+    ({ image, mcpServerId } = selectRunningImage(started.state, resolved));
   } catch (error) {
     // An image whose Pharo version is outside the MCP contract still runs, and
     // is still worth having: the caller asked for that version, and the tools
     // it cannot offer are the only thing missing. Keep it, and say what is gone.
-    const withoutMcp = unsupportedRunningImage(opened.state, resolved);
+    const withoutMcp = unsupportedRunningImage(started.state, resolved);
     if (!withoutMcp) {
       // The image is running but unusable to us, so do not leave it behind.
       await stopProjectImage({ projectRoot, imageId: resolved }).catch(() => {});
       throw error;
     }
-    const open = { statePath: opened.statePath, imageId: resolved, mcp: false };
-    writeOpenImages(projectRoot, { ...openImages, [resolved]: open });
-    return { ...open, created, warning: pharoMcpWarning(withoutMcp) };
+    const record = { statePath: started.statePath, imageId: resolved, mcp: false };
+    writeRunningImages(projectRoot, { ...runningImages, [resolved]: record });
+    return { ...record, created, warning: pharoMcpWarning(withoutMcp) };
   }
   const mountPath = resolveMountPath(projectRoot, readConfig(projectRoot), image.id);
   fs.mkdirSync(path.dirname(mountPath), { recursive: true });
-  const open = {
-    statePath: opened.statePath,
+  const record = {
+    statePath: started.statePath,
     imageId: image.id,
     mcpServerId,
     mountPath,
   };
   let projectionPort;
   try {
-    projectionPort = await startProjection(projectRoot, open, image.imageName);
+    projectionPort = await startProjection(projectRoot, record, image.imageName);
   } catch (error) {
     // The projection is half-started at best and nothing records it yet, so
-    // close the image rather than leave an image and a mount nothing owns.
+    // stop the image rather than leave an image and a mount nothing owns.
     await stopProjectImage({ projectRoot, imageId: resolved }).catch(() => {});
     throw error;
   }
-  writeOpenImages(projectRoot, { ...openImages, [resolved]: { ...open, projectionPort } });
+  writeRunningImages(projectRoot, { ...runningImages, [resolved]: { ...record, projectionPort } });
   const unappliedPin = unappliedPharoMcpPin(image);
   return {
     imageId: image.id,
@@ -277,13 +276,13 @@ function unsupportedRunningImage(state, imageId) {
 export function pharoMcpWarning(image) {
   const reason = image.pharoMcpContract?.reason
     ?? "This image Pharo version is outside the supported Pharo MCP range.";
-  return `${reason} Image ${image.id} is open without MCP tools or a source projection;`
+  return `${reason} Image ${image.id} is running without MCP tools or a source projection;`
     + " drive it with the Pharo command line instead.";
 }
 
-async function startProjection(projectRoot, open, imageName) {
-  const result = await callImageTool(projectRoot, open, "image_evaluate", {
-    code: pifsStartCode(open.mountPath, imageName),
+async function startProjection(projectRoot, record, imageName) {
+  const result = await callImageTool(projectRoot, record, "image_evaluate", {
+    code: pifsStartCode(record.mountPath, imageName),
   });
   const projectionPort = Number(resultPrintString(result));
   if (!Number.isInteger(projectionPort) || projectionPort < 1) {
@@ -294,74 +293,71 @@ async function startProjection(projectRoot, open, imageName) {
   return projectionPort;
 }
 
-async function closeOneImage(projectRoot, openImages, imageId) {
-  const open = openImages[imageId];
+async function stopOneImage(projectRoot, runningImages, imageId) {
+  const record = runningImages[imageId];
   let projectionError;
-  // An image opened without MCP has no projection to stop, and no route to
+  // An image started without MCP has no projection to stop, and no route to
   // ask over either.
-  if (open.projectionPort !== undefined) {
+  if (record.projectionPort !== undefined) {
     try {
-      await callImageTool(projectRoot, open, "image_evaluate", {
-        code: pifsStopCode(open.projectionPort),
+      await callImageTool(projectRoot, record, "image_evaluate", {
+        code: pifsStopCode(record.projectionPort),
       });
     } catch (error) {
       projectionError = error;
     }
   }
-  const closed = await runLifecycle(
+  const stopped = await runLifecycle(
     () => stopProjectImage({ projectRoot, imageId }),
-    `PLexus could not close image ${imageId}.`,
+    `PLexus could not stop image ${imageId}.`,
   );
-  return { stoppedImages: closed.stoppedImages.map((image) => image.id), projectionError };
+  return { stoppedImage: stopped.stoppedImage?.id, projectionError };
 }
 
-export async function closeAgentImage(projectRoot, imageId) {
-  const openImages = readOpenImages(projectRoot);
-  const identifiers = imageId === undefined
-    ? Object.keys(openImages)
+/**
+ * Stop one image, or with `all`, every image this project started. Naming no
+ * image stops the default one, as every other command addresses it; `all` is
+ * the cleanup, and says so where the caller can see it.
+ *
+ * @param {string} projectRoot
+ * @param {string} [imageId]
+ * @param {{ all?: boolean }} [options]
+ */
+export async function stopAgentImage(projectRoot, imageId, options = {}) {
+  const runningImages = readRunningImages(projectRoot);
+  if (options.all && imageId !== undefined) {
+    throw new Error("Stopping every image takes no image id.");
+  }
+  const identifiers = options.all
+    ? Object.keys(runningImages)
     : [resolveImageId(projectRoot, imageId)];
   if (identifiers.length === 0) {
-    throw new Error("No open pharo-agent image.");
+    throw new Error("No pharo-agent image is running.");
   }
   for (const identifier of identifiers) {
-    if (!openImages[identifier]) {
-      throw new Error(`Image ${identifier} is not open.`);
+    if (!runningImages[identifier]) {
+      throw new Error(`Image ${identifier} is not running.`);
     }
   }
 
   const stoppedImages = [];
   const projectionErrors = [];
-  const remaining = { ...openImages };
+  const remaining = { ...runningImages };
   for (const identifier of identifiers) {
-    const closed = await closeOneImage(projectRoot, openImages, identifier);
+    const stopped = await stopOneImage(projectRoot, runningImages, identifier);
     delete remaining[identifier];
-    writeOpenImages(projectRoot, remaining);
-    stoppedImages.push(...closed.stoppedImages);
-    if (closed.projectionError) {
-      projectionErrors.push(`${identifier}: ${closed.projectionError.message}`);
+    writeRunningImages(projectRoot, remaining);
+    if (stopped.stoppedImage) {
+      stoppedImages.push(stopped.stoppedImage);
+    }
+    if (stopped.projectionError) {
+      projectionErrors.push(`${identifier}: ${stopped.projectionError.message}`);
     }
   }
   if (projectionErrors.length > 0) {
-    throw new Error(`Images closed, but PIFS cleanup failed: ${projectionErrors.join("; ")}`);
+    throw new Error(`Images stopped, but PIFS cleanup failed: ${projectionErrors.join("; ")}`);
   }
   return { stoppedImages };
-}
-
-export function agentImageStatus(projectRoot) {
-  const openImages = readOpenImages(projectRoot);
-  let defaultImage;
-  try {
-    defaultImage = defaultImageId(projectRoot);
-  } catch {
-    defaultImage = undefined;
-  }
-  return {
-    ...(defaultImage ? { defaultImage } : {}),
-    images: Object.values(openImages).map((open) => ({
-      ...open,
-      isDefault: open.imageId === defaultImage,
-    })),
-  };
 }
 
 export async function listImageTemplates(projectRoot) {
