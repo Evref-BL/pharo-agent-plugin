@@ -16,6 +16,7 @@
     "bin",
     "src",
     "skills",
+    ".mcp.json",
     "plugin.json",
     ".agents",
     ".claude-plugin",
