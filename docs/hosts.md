@@ -54,9 +54,42 @@ image also needs a newer MCP; re-running `init` does not perform that upgrade.
 ## Installing as a plugin
 
 Claude Code and Codex can install this repository as a plugin, from
-`.claude-plugin/marketplace.json` and `.agents/plugins/marketplace.json`. The
-plugin carries one global skill, which runs the setup above for the current
-project. It adds no MCP server and no Pharo tool catalogue to every chat.
+`.claude-plugin/marketplace.json` and `.agents/plugins/marketplace.json`. In
+Claude Code:
+
+```text
+/plugin marketplace add Evref-BL/pharo-agent-plugin
+/plugin install pharo-agent@evref-bl
+```
+
+The plugin carries one skill, which runs the setup above for the current
+project, and declares the `image` MCP server. A host starts that server when a
+session starts, so a chat where the plugin is enabled reaches the image's
+tools with nothing configured by hand; it loads the server's name and
+instructions, not every tool definition.
+
+Enabling the plugin only where Pharo work happens keeps every other project
+untouched. Committing this to a project's `.claude/settings.json` does that,
+and brings the marketplace with it:
+
+```json
+{
+  "extraKnownMarketplaces": {
+    "evref-bl": {
+      "source": {
+        "source": "git",
+        "url": "https://github.com/Evref-BL/pharo-agent-plugin.git"
+      }
+    }
+  },
+  "enabledPlugins": { "pharo-agent@evref-bl": true }
+}
+```
+
+A host installs a plugin by cloning the repository and runs no `npm install`
+in it, so the declared server is not a path into the plugin: it runs the
+published release that matches the plugin's version, through `npx`. The first
+start downloads it.
 
 OpenCode has no plugin manifest here; it uses the same CLI with
 `--host opencode`.

@@ -54,12 +54,12 @@ test("the plugin declares the server a host starts", () => {
   const declared = readJson(".mcp.json").mcpServers;
   const packageJson = readJson("package.json");
 
+  assert.equal(declared.image.command, "npx");
   assert.deepEqual(
     declared.image.args,
-    ["${CLAUDE_PLUGIN_ROOT}/bin/pharo-agent.js", "mcp"],
-    "the server has to be started from the plugin's own directory, whatever it is",
+    ["--yes", `@evref-bl/pharo-agent@${packageJson.version}`, "mcp"],
+    "a host installs this plugin by cloning the repository and runs no npm install, so a path into the plugin would fail at its first import",
   );
-  assert.equal(declared.image.args[0].endsWith(packageJson.bin["pharo-agent"].slice(1)), true);
   assert.equal(
     packageJson.files.includes(".mcp.json"),
     true,
