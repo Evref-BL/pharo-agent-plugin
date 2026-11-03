@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import { loadProjectState } from "@evref-bl/plexus";
 import { configuredImages, pluginDirectory } from "./project.js";
 
 export function runtimeDirectory(projectRoot) {
@@ -114,13 +115,10 @@ export function imageProcessIsAlive(pid) {
 }
 
 export function recordedImageIsRunning(record) {
-  let state;
-  try {
-    state = readJson(record.statePath);
-  } catch {
-    return false;
-  }
-  const image = (state.images ?? []).find((candidate) => candidate.id === record.imageId);
+  // PLexus owns the state file, so PLexus reads it: a hand-rolled JSON.parse
+  // here was this package deciding what another package's format means.
+  const state = loadProjectState(record.statePath);
+  const image = state?.images.find((candidate) => candidate.id === record.imageId);
   return image?.status === "running" && imageProcessIsAlive(image.pid);
 }
 

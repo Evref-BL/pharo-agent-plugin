@@ -1,7 +1,14 @@
 import fs from "node:fs";
 import path from "node:path";
+// The config file is PLexus's, so its name and its path come from PLexus.
+// Spelling them here made this package a second definition of another
+// package's format, free to drift from it without anything noticing.
+import {
+  plexusProjectConfigFileName,
+  projectConfigPath as plexusProjectConfigPath,
+} from "@evref-bl/plexus";
 
-export const projectConfigFileName = "plexus.json";
+export const projectConfigFileName = plexusProjectConfigFileName;
 
 function projectRootAbove(start) {
   let directory = path.resolve(start);
@@ -47,7 +54,7 @@ export function enclosingProjectRoot(start) {
 }
 
 export function projectConfigPath(projectRoot) {
-  return path.join(projectRoot, projectConfigFileName);
+  return plexusProjectConfigPath(projectRoot);
 }
 
 export function pluginDirectory(projectRoot) {
