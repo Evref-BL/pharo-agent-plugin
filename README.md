@@ -6,6 +6,20 @@ Claude Code, Codex and OpenCode.
 
 ## Setup
 
+In Claude Code, install it as a plugin:
+
+```text
+/plugin marketplace add Evref-BL/pharo-agent-plugin
+/plugin install pharo-agent@evref-bl
+```
+
+Then ask the agent to enable Pharo tooling in a project. The plugin carries a
+setup skill that runs the command below for you, and declares the `image` MCP
+server, so the running image's tools reach the chat without a server
+configured by hand. [Hosts](docs/hosts.md) covers enabling it per project
+rather than everywhere.
+
+Any host can run the CLI instead, which is the whole of the setup either way.
 In the project directory:
 
 ```sh
