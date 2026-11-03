@@ -31,9 +31,12 @@ test("the first registered image becomes the default one", () => {
     const added = addImage(root, { id: "dev", template: "Pharo 13.0 - 64bit (stable)" });
 
     assert.equal(added.isDefault, true);
-    assert.equal(added.imageName, `${path.basename(root)}-{workspaceId}-dev`);
+    // A template PLexus expands at launch, rather than the project name
+    // baked in when the image was declared.
+    assert.equal(added.imageName, "{projectName}-{workspaceId}-dev");
     const [image] = configuredImages(root);
-    assert.equal(image.mcp.loadPolicy, "ifMissing");
+    // The policy is PLexus's default, so the declaration does not repeat it.
+    assert.equal(image.mcp.loadPolicy, undefined);
     assert.equal(image.create.kind, "template");
     assert.equal(image.create.templateName, "Pharo 13.0 - 64bit (stable)");
     assert.equal(image.mcp.port, undefined);
@@ -65,7 +68,11 @@ test("registering a duplicate image id is refused", () => {
   const root = temporaryProject();
   try {
     addImage(root, { id: "dev", template: "Pharo 13" });
-    assert.throws(() => addImage(root, { id: "dev", template: "Pharo 12" }), /already configured/);
+    // PLexus owns the declaration, so PLexus refuses the duplicate.
+    assert.throws(
+      () => addImage(root, { id: "dev", template: "Pharo 12" }),
+      /already declared/,
+    );
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }
