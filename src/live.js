@@ -85,6 +85,10 @@ export function resultPrintString(result) {
   return namedPrintString(result) ?? textPartText(result);
 }
 
+/**
+ * @param {{ images: { imageId: string, status: string }[] }} listed
+ * @param {string} imageId
+ */
 export function imageCreationPlan(listed, imageId) {
   const summary = listed.images.find((image) => image.imageId === imageId);
   if (!summary) {
@@ -202,7 +206,7 @@ export async function openAgentImage(projectRoot, imageId) {
   }
   fetchPifsRelease(pifsCloneDirectory(projectRoot));
   const launcher = new ScopedPharoLauncher({ projectRoot });
-  const plan = imageCreationPlan(launcher.listImages(), resolved);
+  const plan = imageCreationPlan(await launcher.listImages(), resolved);
   const created = plan !== "none";
   if (created) {
     if (plan === "reset") await launcher.resetImage(resolved);
