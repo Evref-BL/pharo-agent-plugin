@@ -67,7 +67,6 @@ export function addImage(projectRoot, request) {
   const image = {
     id,
     imageName,
-    active: true,
     mcp: { loadScript: defaultLoadScript, loadPolicy: "ifMissing" },
     create: {
       kind: "template",

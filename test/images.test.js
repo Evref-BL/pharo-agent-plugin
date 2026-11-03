@@ -49,7 +49,9 @@ test("a later registered image is declared without taking the default", () => {
     const second = addImage(root, { id: "ci", template: "Pharo 12", category: "Official" });
 
     assert.equal(second.isDefault, false);
-    assert.deepEqual(configuredImages(root).map((image) => image.active), [true, true]);
+    // PLexus stopped reading `active` when it stopped reconciling declarations
+    // against what is running, so a declaration no longer carries one.
+    assert.deepEqual(configuredImages(root).map((image) => image.active), [undefined, undefined]);
     assert.deepEqual(listImages(root).images.map((image) => image.isDefault), [true, false]);
 
     assert.deepEqual(useImage(root, "ci"), { defaultImage: "ci" });
