@@ -1,7 +1,7 @@
 import { createRequire } from "node:module";
 import { PlexusGateway } from "@evref-bl/plexus/gateway";
+import { loadProjectState } from "@evref-bl/plexus";
 import {
-  readJson,
   selectRunningImage,
   unappliedPharoMcpPin,
 } from "./runtime.js";
@@ -15,7 +15,10 @@ export const { version } = createRequire(import.meta.url)("../package.json");
 // is nothing to register here and nothing that can go stale between the call
 // that started the image and this one.
 export function imageGateway(projectRoot, running) {
-  const state = readJson(running.statePath);
+  const state = loadProjectState(running.statePath);
+  if (!state) {
+    throw new Error(`PLexus has no state at ${running.statePath}.`);
+  }
   const { image, mcpServerId } = selectRunningImage(state, running.imageId);
   if (image.id !== running.imageId || mcpServerId !== running.mcpServerId) {
     throw new Error(`The PLexus image ${running.imageId} changed; run pharo-agent image start again.`);
