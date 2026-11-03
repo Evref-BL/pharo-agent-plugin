@@ -20,8 +20,8 @@ an MCP server with Claude Code, Codex, or OpenCode.
 - Keep ordinary commands argument-light: `init --host`, `image start`,
   `image list`, `image stop`, and `pharo <tool> [arguments-json]`.
 - Images are addressed by id, in PLexus's vocabulary: `start`, `stop`, `list`,
-  never `open`, `close` or `status`. See
-  `notes/retire-the-project-lifecycle-verbs.md` in the workspace.
+  never `open`, `close` or `status`. An image is a host process this project
+  starts and stops; nothing here keeps a project-wide lifecycle state.
 - `src/hosts.js` is the one list of supported hosts, in the order they are
   offered. The usage line, the error message, the README and the setup skill
   all follow it; do not spell the hosts out anywhere else.
