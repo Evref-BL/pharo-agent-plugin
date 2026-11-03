@@ -40,6 +40,20 @@ image at all.
 `image stop --all` stops every image this project started. Over `mcp`, each
 Pharo tool takes the same optional `image` argument.
 
+## Where the source projection works
+
+An image and its Pharo tools run anywhere Node does. Projecting its source as
+files needs macOS with [fuse-t](https://www.fuse-t.org/), which is an install
+the user has to approve, so `image start` checks before mounting:
+
+```json
+{ "ok": true, "imageId": "dev",
+  "warning": "A source projection needs macOS and fuse-t, which this platform (linux) cannot provide. Image dev is running with its Pharo tools and no source projection; read and edit its code through the tools." }
+```
+
+The image is running and fully usable; `mountPath` and `projectionPort` are
+absent from `image list`, and `image stop` has nothing extra to unmount.
+
 ## Pharo versions outside the MCP range
 
 Any version the launcher offers can be declared. MCP and the source projection

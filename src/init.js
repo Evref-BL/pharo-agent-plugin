@@ -137,8 +137,10 @@ starts without MCP tools or a source projection, saying so.
 use <id>\` changes the default, and \`pharo-agent image remove <id>\` drops a
 declaration. Stop an image before removing its declaration.
 
-Use \`pharo-agent image start\` before live-image work and edit projected source
-under \`.pharo-agent/mounts\`.
+Use \`pharo-agent image start\` before live-image work. On macOS with fuse-t
+installed the image's source is also projected under \`.pharo-agent/mounts\`
+and can be edited as files; everywhere else the Pharo tools are the way in,
+and \`image start\` says so.
 
 With the pharo-agent plugin enabled for this project, the image's tools are MCP
 tools: start an image with \`image_start\` and call the rest by name. Without it,

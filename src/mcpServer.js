@@ -39,8 +39,9 @@ const lifecycleTools = [
     name: "image_start",
     description:
       "Start one of this project's Pharo images, creating it from its template "
-      + "when it does not exist yet, and mount its source projection. The "
-      + "image's own tools are listed once it answers.",
+      + "when it does not exist yet. The image's own tools are listed once it "
+      + "answers. On macOS with fuse-t its source also mounts as files; "
+      + "elsewhere the image starts without that and says so.",
     inputSchema: {
       type: "object",
       properties: {
@@ -61,7 +62,7 @@ const lifecycleTools = [
   {
     name: "image_stop",
     description:
-      "Stop a running image and the source projection this project started for it.",
+      "Stop a running image, and any source projection this project started for it.",
     inputSchema: {
       type: "object",
       properties: {

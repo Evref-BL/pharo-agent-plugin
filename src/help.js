@@ -40,15 +40,16 @@ const commands = {
   },
   "image start": {
     usage: "image start [<id>]",
-    description: "Create if needed and start an image with its tools and source projection. Omit the id\n"
-      + "to use the project's default image. Images already running stay running. Pharo versions\n"
-      + "outside the MCP support range start without tools or a source projection.",
+    description: "Create if needed and start an image with its Pharo tools. Omit the id to use the\n"
+      + "project's default image. Images already running stay running. A source projection is\n"
+      + "mounted on macOS with fuse-t; elsewhere the image starts without one and says so.\n"
+      + "Pharo versions outside the MCP support range start without tools or a projection.",
     example: "image start dev",
   },
   "image stop": {
     usage: "image stop [<id>] [--all]",
-    description: "Stop the named image and its source projection, or the project's default image when\n"
-      + "no id is given. Use --all to stop every image this project started.",
+    description: "Stop the named image and any source projection it has, or the project's default\n"
+      + "image when no id is given. Use --all to stop every image this project started.",
     example: "image stop dev",
   },
   mcp: {

@@ -24,6 +24,48 @@ import {
 
 export const pifsRelease = "v0.9.2";
 
+// fuse-t ships as a macOS installer package, so it lands in /usr/local
+// whatever Homebrew's prefix is. The unversioned symlink is what the daemon
+// links against.
+export const fuseLibraryPath = "/usr/local/lib/libfuse-t.dylib";
+
+/**
+ * Whether a source projection can be mounted here.
+ *
+ * PIFS needs macOS and fuse-t, which is a kernel-adjacent install the user
+ * has to approve. PLexus and the Pharo MCP run anywhere, so until this was
+ * checked, `image start` mounted unconditionally and then stopped the image
+ * when the mount failed -- every image on Linux and Windows, and on any Mac
+ * without fuse-t. The image and its tools were never the part that could not
+ * work.
+ *
+ * @param {{ platform?: string, exists?: (path: string) => boolean }} [host]
+ */
+export function projectionAvailability(host = {}) {
+  const platform = host.platform ?? process.platform;
+  const exists = host.exists ?? fs.existsSync;
+  if (platform !== "darwin") {
+    return {
+      available: false,
+      reason: "A source projection needs macOS and fuse-t, which this platform"
+        + ` (${platform}) cannot provide.`,
+    };
+  }
+  if (!exists(fuseLibraryPath)) {
+    return {
+      available: false,
+      reason: "A source projection needs fuse-t, which is not installed."
+        + " Install it with `brew install --cask fuse-t`.",
+    };
+  }
+  return { available: true };
+}
+
+export function projectionUnavailableWarning(imageId, reason) {
+  return `${reason} Image ${imageId} is running with its Pharo tools and no`
+    + " source projection; read and edit its code through the tools.";
+}
+
 // The class-side PIFSServer messages this plugin sends into the image. The
 // release automation checks that a published PIFS still implements them: a pin
 // bump that leaves a removed selector in place passes every test here, because
@@ -207,7 +249,9 @@ export async function startAgentImage(projectRoot, imageId) {
     writeRunningImages(projectRoot, runningImages);
     restarted = true;
   }
-  fetchPifsRelease(pifsCloneDirectory(projectRoot));
+  if (projectionAvailability().available) {
+    fetchPifsRelease(pifsCloneDirectory(projectRoot));
+  }
   const launcher = new ScopedPharoLauncher({ projectRoot });
   const plan = imageCreationPlan(await launcher.listImages(), resolved);
   const created = plan !== "none";
@@ -237,6 +281,24 @@ export async function startAgentImage(projectRoot, imageId) {
     writeRunningImages(projectRoot, { ...runningImages, [resolved]: record });
     return { ...record, created, warning: pharoMcpWarning(withoutMcp) };
   }
+  const unappliedPin = unappliedPharoMcpPin(image);
+  const projection = projectionAvailability();
+  if (!projection.available) {
+    // The image and its tools are the point; the projection is the extra this
+    // package bundles where the platform allows it.
+    const record = { statePath: started.statePath, imageId: image.id, mcpServerId };
+    writeRunningImages(projectRoot, { ...runningImages, [resolved]: record });
+    return {
+      imageId: image.id,
+      created,
+      ...(restarted ? { restarted } : {}),
+      warning: [
+        projectionUnavailableWarning(image.id, projection.reason),
+        unappliedPin,
+      ].filter(Boolean).join("\n"),
+    };
+  }
+
   const mountPath = resolveMountPath(projectRoot, readConfig(projectRoot), image.id);
   fs.mkdirSync(path.dirname(mountPath), { recursive: true });
   const record = {
@@ -255,7 +317,6 @@ export async function startAgentImage(projectRoot, imageId) {
     throw error;
   }
   writeRunningImages(projectRoot, { ...runningImages, [resolved]: { ...record, projectionPort } });
-  const unappliedPin = unappliedPharoMcpPin(image);
   return {
     imageId: image.id,
     created,
