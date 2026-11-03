@@ -493,11 +493,13 @@ test("a source projection is offered only where it can be mounted", () => {
 
   const onLinux = projectionAvailability({ platform: "linux", exists: withFuse });
   assert.equal(onLinux.available, false);
+  assert.ok(onLinux.reason);
   assert.match(onLinux.reason, /needs macOS and fuse-t/);
   assert.match(onLinux.reason, /linux/);
 
   const noFuse = projectionAvailability({ platform: "darwin", exists: withoutFuse });
   assert.equal(noFuse.available, false);
+  assert.ok(noFuse.reason);
   assert.match(noFuse.reason, /brew install --cask fuse-t/);
 });
 
@@ -507,10 +509,9 @@ test("the fuse-t library is looked for where its installer puts it", () => {
 });
 
 test("a missing projection says the image and its tools are still there", () => {
-  const warning = projectionUnavailableWarning(
-    "dev",
-    projectionAvailability({ platform: "linux", exists: () => false }).reason,
-  );
+  const unavailable = projectionAvailability({ platform: "linux", exists: () => false });
+  assert.ok(unavailable.reason);
+  const warning = projectionUnavailableWarning("dev", unavailable.reason);
 
   assert.match(warning, /Image dev is running with its Pharo tools/);
   assert.match(warning, /no source projection/);
