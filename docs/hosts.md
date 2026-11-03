@@ -43,10 +43,10 @@ paths. Unrelated files are not removed during refresh.
 Existing `plexus.json`, including image declarations, is preserved. Omit
 `--mount-root` to preserve the existing plugin configuration, including custom
 mount roots and the default image. Runtime records and mounted sources are
-left alone; refresh does not open, close, save, or reload images.
+left alone; refresh does not start, stop, save, or reload images.
 
 Updating the installed package, refreshing project files, and upgrading code
-inside an image are separate operations. In particular, an image opened with
+inside an image are separate operations. In particular, an image started with
 MCP's `ifMissing` load policy keeps the MCP it already has. Follow the
 [image update guidance](images.md#an-image-that-brought-its-own-mcp) when an
 image also needs a newer MCP; re-running `init` does not perform that upgrade.

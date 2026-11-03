@@ -23,7 +23,7 @@ for (const host of supportedHosts) {
       const projectPath = path.join(root, "plexus.json");
       const project = JSON.parse(fs.readFileSync(projectPath, "utf8"));
       fs.writeFileSync(projectPath, JSON.stringify({ ...project, images: [{ id: "dev" }] }));
-      const runtimePath = path.join(root, ".pharo-agent", "runtime", "active.json");
+      const runtimePath = path.join(root, ".pharo-agent", "runtime", "running.json");
       fs.mkdirSync(path.dirname(runtimePath), { recursive: true });
       fs.writeFileSync(runtimePath, '{"images":{"dev":{"imageId":"dev"}}}');
       const mountPath = path.join(root, ".custom-mounts", "dev", "source.txt");

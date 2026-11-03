@@ -10,7 +10,8 @@ const commands = {
   },
   "image list": {
     usage: "image list",
-    description: "List the project's declared images, default image, and recorded open state.",
+    description: "List the project's declared images and the default one, with the mount and\n"
+      + "projection port of each image this project has running.",
     example: "image list",
   },
   "image templates": {
@@ -21,57 +22,52 @@ const commands = {
   },
   "image add": {
     usage: "image add <id> --template <name> [--category <name>] [--profile <id>]",
-    description: "Declare an image with a required id and template name; open creates it later.\n"
+    description: "Declare an image with a required id and template name; image start creates it later.\n"
       + "Use --category for an ambiguous template name and --profile to choose a launcher profile.\n"
       + "The first declared image becomes the default.",
     example: "image add dev --template '<template name>'",
   },
   "image use": {
     usage: "image use <id>",
-    description: "Make the required declared image the project's default. It may already be open.",
+    description: "Make the required declared image the project's default. It may already be running.",
     example: "image use dev",
   },
   "image remove": {
     usage: "image remove <id>",
-    description: "Remove the required image declaration. Close the image first. Its image files are kept.\n"
+    description: "Remove the required image declaration. Stop the image first. Its image files are kept.\n"
       + "Removing the default image clears the default selection.",
     example: "image remove dev",
   },
-  open: {
-    usage: "open [--image <id>]",
-    description: "Create if needed and open an image with its tools and source projection. Omit --image\n"
-      + "to use the project's default image. Other open images stay open. Pharo versions outside\n"
-      + "the MCP support range open without tools or a source projection.",
-    example: "open --image dev",
+  "image start": {
+    usage: "image start [<id>]",
+    description: "Create if needed and start an image with its tools and source projection. Omit the id\n"
+      + "to use the project's default image. Images already running stay running. Pharo versions\n"
+      + "outside the MCP support range start without tools or a source projection.",
+    example: "image start dev",
   },
-  status: {
-    usage: "status",
-    description: "Report all images this project has open. This command does not accept --image.",
-    example: "status",
-  },
-  close: {
-    usage: "close [--image <id>]",
-    description: "Close the selected image and its source projection. Omitting --image closes all images\n"
-      + "this project opened, rather than only the default image.",
-    example: "close --image dev",
+  "image stop": {
+    usage: "image stop [<id>] [--all]",
+    description: "Stop the named image and its source projection, or the project's default image when\n"
+      + "no id is given. Use --all to stop every image this project started.",
+    example: "image stop dev",
   },
   mcp: {
     usage: "mcp [--image <id>]",
     description: "Serve this project's images as a command-scoped stdio MCP server. Omit\n"
       + "--image to use the project's default image. It starts whether or not an image\n"
-      + "is running: image_start starts one and the image's own tools join the list.\n"
+      + "is running: image_start starts one and the image's own tools join the list. The\n"
       + "server exits with this command, and the plugin's .mcp.json starts it for a host.",
     example: "mcp --image dev",
   },
   "pharo list": {
     usage: "pharo list [--image <id>]",
-    description: "List an open image's advertised tools. Omit --image to use the project's default image.\n"
+    description: "List a running image's advertised tools. Omit --image to use the project's default image.\n"
       + "Use tool_search and tool_get to discover and inspect the rest of its catalogue.",
     example: "pharo list",
   },
   pharo: {
     usage: "pharo <tool> [arguments-json] [--image <id>]",
-    description: "Call a tool in an open image. Arguments must be a JSON object and default to {}.\n"
+    description: "Call a tool in a running image. Arguments must be a JSON object and default to {}.\n"
       + "Omit --image to use the project's default image. Inspect the tool's schema with tool_get\n"
       + "before calling it; a failed tool result makes the command exit unsuccessfully.",
     example: 'pharo tool_get \'{"name":"class_search"}\'',

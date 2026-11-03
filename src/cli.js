@@ -4,14 +4,9 @@ import { initialize } from "./init.js";
 import { addImage, listImages, removeImage, useImage } from "./images.js";
 import { callImageTool, listImageTools } from "./gateway.js";
 import { serveImagesMcp } from "./mcpServer.js";
-import {
-  agentImageStatus,
-  closeAgentImage,
-  listImageTemplates,
-  openAgentImage,
-} from "./live.js";
+import { listImageTemplates, startAgentImage, stopAgentImage } from "./live.js";
 import { findProjectRoot } from "./project.js";
-import { readOpenImage } from "./runtime.js";
+import { readRunningImage } from "./runtime.js";
 
 function parseInit(args) {
   let host;
@@ -62,6 +57,21 @@ function parseImageAdd(args) {
     throw new Error("image add requires --template <name>");
   }
   return parsed;
+}
+
+// `image start` and `image stop` name their subject, like `image use` and
+// `image remove`; `--image` stays on the commands that scope a call.
+function parseImageTarget(subcommand, args) {
+  const all = args.includes("--all");
+  const rest = args.filter((value) => value !== "--all");
+  const [id, ...extra] = rest;
+  if (extra.length > 0 || (id && id.startsWith("--"))) {
+    throw new Error(`image ${subcommand} takes one image id`);
+  }
+  if (all && subcommand !== "stop") {
+    throw new Error(`image ${subcommand} does not accept --all`);
+  }
+  return { id, all };
 }
 
 function takeImageOption(args) {
@@ -147,6 +157,24 @@ export async function main(args) {
       console.log(JSON.stringify({ ok: true, ...addImage(projectRoot, parseImageAdd(imageArgs)) }, null, 2));
       return;
     }
+    if (subcommand === "start") {
+      const { id } = parseImageTarget(subcommand, imageArgs);
+      console.log(JSON.stringify(
+        { ok: true, ...(await startAgentImage(projectRoot, id)) },
+        null,
+        2,
+      ));
+      return;
+    }
+    if (subcommand === "stop") {
+      const { id, all } = parseImageTarget(subcommand, imageArgs);
+      console.log(JSON.stringify(
+        { ok: true, ...(await stopAgentImage(projectRoot, id, { all })) },
+        null,
+        2,
+      ));
+      return;
+    }
     if (subcommand === "use" || subcommand === "remove") {
       const [id, ...extra] = imageArgs;
       if (!id || extra.length > 0) {
@@ -159,30 +187,12 @@ export async function main(args) {
     throw new Error(`Unsupported image command: ${subcommand ?? ""}\n${usage()}`);
   }
   const { image, rest: commandArgs } = takeImageOption(rest);
-  if (command === "open") {
-    requireNoArguments(command, commandArgs);
-    console.log(JSON.stringify({ ok: true, ...(await openAgentImage(projectRoot, image)) }, null, 2));
-    return;
-  }
-  if (command === "close") {
-    requireNoArguments(command, commandArgs);
-    console.log(JSON.stringify({ ok: true, ...(await closeAgentImage(projectRoot, image)) }, null, 2));
-    return;
-  }
-  if (command === "status") {
-    requireNoArguments(command, commandArgs);
-    if (image) {
-      throw new Error("status reports every open image and does not accept --image");
-    }
-    console.log(JSON.stringify({ ok: true, ...agentImageStatus(projectRoot) }, null, 2));
-    return;
-  }
   if (command === "pharo") {
     const [toolName, argumentsJson, ...extra] = commandArgs;
     if (toolName === "list") {
       if (argumentsJson || extra.length > 0) throw new Error("pharo list does not accept arguments");
       console.log(JSON.stringify(
-        await listImageTools(projectRoot, readOpenImage(projectRoot, image)),
+        await listImageTools(projectRoot, readRunningImage(projectRoot, image)),
         null,
         2,
       ));
@@ -193,7 +203,7 @@ export async function main(args) {
     }
     const result = await callImageTool(
       projectRoot,
-      readOpenImage(projectRoot, image),
+      readRunningImage(projectRoot, image),
       toolName,
       parseToolArguments(argumentsJson),
     );
