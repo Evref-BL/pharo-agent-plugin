@@ -5,6 +5,7 @@ import path from "node:path";
 import test from "node:test";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { createProjectConfig } from "../src/project.js";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const binary = path.join(root, "bin/pharo-agent.js");
@@ -15,8 +16,46 @@ function readJson(relativePath) {
 
 function temporaryProject() {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), "pharo-agent-mcp-"));
-  fs.writeFileSync(path.join(directory, "plexus.json"), `${JSON.stringify({ images: [] })}\n`);
+  createProjectConfig(directory);
   return directory;
+}
+
+const projectToolNames = [
+  "image_templates",
+  "image_add",
+  "image_start",
+  "image_list",
+  "image_stop",
+];
+
+// One call, answered the way a host would get it. Nothing here starts an
+// image: declaring one does not, which is the point of these tests.
+function callTool({ cwd, name, toolArguments = {} }) {
+  const request = [
+    { jsonrpc: "2.0", id: 1, method: "initialize", params: {
+      protocolVersion: "2024-11-05", capabilities: {},
+      clientInfo: { name: "test", version: "1" },
+    } },
+    { jsonrpc: "2.0", method: "notifications/initialized" },
+    { jsonrpc: "2.0", id: 2, method: "tools/call", params: { name, arguments: toolArguments } },
+  ].map((message) => JSON.stringify(message)).join("\n");
+
+  const served = spawnSync(process.execPath, [binary, "mcp"], {
+    cwd,
+    input: `${request}\n`,
+    encoding: "utf8",
+    timeout: 20_000,
+  });
+  const answer = served.stdout
+    .split("\n")
+    .filter((line) => line.startsWith("{"))
+    .map((line) => JSON.parse(line))
+    .find((message) => message.id === 2);
+  return { served, result: answer?.result, error: answer?.error };
+}
+
+function answerOf(result) {
+  return JSON.parse(result.content[0].text);
 }
 
 // Drives the server over stdio the way a host does, and answers with what it
@@ -82,7 +121,7 @@ test("the server starts and lists its lifecycle tools with no image open", () =>
     assert.match(initialize.instructions, /Pharo/);
     assert.deepEqual(
       tools.map((tool) => tool.name),
-      ["image_start", "image_list", "image_stop"],
+      projectToolNames,
       "a host starts this before anyone starts an image, so the list must not be empty",
     );
   } finally {
@@ -100,7 +139,11 @@ test("the host says where the project is when the working directory does not", (
     });
 
     assert.equal(served.status, 0, served.stderr);
-    assert.equal(tools.length, 3, "a plugin runs from its own directory, not the project's");
+    assert.equal(
+      tools.length,
+      projectToolNames.length,
+      "a plugin runs from its own directory, not the project's",
+    );
   } finally {
     fs.rmSync(project, { recursive: true, force: true });
     fs.rmSync(elsewhere, { recursive: true, force: true });
@@ -113,8 +156,56 @@ test("a directory with no project still gets a server rather than a dead one", (
     const { served, tools } = listTools({ cwd: elsewhere, env: { CLAUDE_PROJECT_DIR: elsewhere } });
 
     assert.equal(served.status, 0, "a server that exits is a broken server in the host's list");
-    assert.deepEqual(tools.map((tool) => tool.name), ["image_start", "image_list", "image_stop"]);
+    assert.deepEqual(tools.map((tool) => tool.name), projectToolNames);
   } finally {
     fs.rmSync(elsewhere, { recursive: true, force: true });
+  }
+});
+
+test("an image is declared through the server, with no shell", () => {
+  // Declaring was the one step of the lifecycle that a chat could not take:
+  // the tools started, listed and stopped images a CLI had to register first.
+  const cwd = temporaryProject();
+  try {
+    const { served, result } = callTool({
+      cwd,
+      name: "image_add",
+      toolArguments: { id: "dev", template: "Pharo 14.0 - 64bit (next stable)" },
+    });
+
+    assert.equal(served.status, 0, served.stderr);
+    assert.equal(result.isError, undefined, served.stdout);
+    assert.deepEqual(answerOf(result), {
+      ok: true,
+      id: "dev",
+      imageName: "{projectName}-{workspaceId}-dev",
+      isDefault: true,
+      templateName: "Pharo 14.0 - 64bit (next stable)",
+    });
+
+    const listed = answerOf(callTool({ cwd, name: "image_list" }).result);
+    assert.equal(listed.defaultImage, "dev");
+    assert.deepEqual(listed.images.map((image) => image.running), [false]);
+  } finally {
+    fs.rmSync(cwd, { recursive: true, force: true });
+  }
+});
+
+test("a declaration with no template is refused where the caller can read it", () => {
+  // The input schema is a description. Nothing between a model and this
+  // server enforces it, so the missing field is named here.
+  const cwd = temporaryProject();
+  try {
+    const { result, error } = callTool({ cwd, name: "image_add", toolArguments: { id: "dev" } });
+
+    assert.equal(result, undefined);
+    assert.match(error.message, /needs a template name/);
+    assert.equal(
+      JSON.parse(fs.readFileSync(path.join(cwd, "plexus.json"), "utf8")).images.length,
+      0,
+      "a refused declaration leaves the project as it was",
+    );
+  } finally {
+    fs.rmSync(cwd, { recursive: true, force: true });
   }
 });

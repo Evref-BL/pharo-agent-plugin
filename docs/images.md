@@ -21,6 +21,11 @@ pharo-agent image add old --template 'Pharo 10.0 - 64bit' --category 'Pharo Mooc
 
 `--profile <id>` puts the image under a particular launcher profile.
 
+With the plugin enabled, the same two steps are MCP tools — `image_templates`
+and `image_add`, which takes `id`, `template`, and `category` or `profile`
+when they are needed. Declaring an image is the one step that used to need a
+shell.
+
 ## Managing declarations
 
 `image list` shows what the project declares, which is the default, and the

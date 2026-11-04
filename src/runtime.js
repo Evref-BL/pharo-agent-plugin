@@ -23,11 +23,18 @@ export function configPath(projectRoot) {
   return path.join(pluginDirectory(projectRoot), "config.json");
 }
 
+// A project can hold a plexus.json this plugin never initialized, and now that
+// an image can be declared from a chat it is reached before `.pharo-agent`
+// exists. An absent settings file is a project with no settings, not an error
+// about a path the caller never named.
 export function readConfig(projectRoot) {
-  return readJson(configPath(projectRoot));
+  const filePath = configPath(projectRoot);
+  if (!fs.existsSync(filePath)) return {};
+  return readJson(filePath);
 }
 
 export function writeConfig(projectRoot, config) {
+  fs.mkdirSync(pluginDirectory(projectRoot), { recursive: true });
   fs.writeFileSync(configPath(projectRoot), `${JSON.stringify(config, null, 2)}\n`);
 }
 

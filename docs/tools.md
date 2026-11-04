@@ -50,6 +50,11 @@ Serves the advertised tools over stdio for a host that speaks MCP, scoped to
 this project. Each tool gains an optional `image` argument; everything else is
 the image's own schema.
 
+Five tools of its own come first, listed whether or not an image is running:
+`image_templates`, `image_add`, `image_start`, `image_list` and `image_stop`.
+A chat that has the plugin enabled can take a project from no images to a
+running one without a shell.
+
 ## A different MCP in the image
 
 The tools are the image's, so a project that wants other tools can serve

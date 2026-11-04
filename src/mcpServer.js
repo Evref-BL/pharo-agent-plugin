@@ -11,8 +11,8 @@ import {
   version,
   withImageSelector,
 } from "./gateway.js";
-import { listImages } from "./images.js";
-import { startAgentImage, stopAgentImage } from "./live.js";
+import { addImage, listImages } from "./images.js";
+import { listImageTemplates, startAgentImage, stopAgentImage } from "./live.js";
 import { readRunningImage } from "./runtime.js";
 
 // The host loads only tool names and these instructions at session start and
@@ -26,15 +26,57 @@ and projecting image source as files on disk.
 Search these tools whenever the task involves Pharo, Smalltalk, a Tonel
 package, or a .st file. Start an image with image_start before calling the
 image's own tools, which are listed once an image answers; image_list says
-what is already running.
+what is already running. A project that declares no image yet needs
+image_templates and image_add first.
 
 The image advertises the common tools rather than all of it. Use tool_search
 and tool_get to find the rest, then call one by name like any other.`;
 
-// Listed whether or not an image is running, so the list is never empty. A
-// host that caches tools and ignores tools/list_changed would otherwise hold
-// an empty list for the whole session and never learn that one had started.
-const lifecycleTools = [
+// This server's own tools, in the order a project meets them: declare an
+// image, start it, and the image's tools join the list. Listed whether or not
+// an image is running, so the list is never empty — a host that caches tools
+// and ignores tools/list_changed would otherwise hold an empty list for the
+// whole session and never learn that one had started.
+const projectTools = [
+  {
+    name: "image_templates",
+    description:
+      "List the images Pharo Launcher can create, with the category of each. "
+      + "A template name that two categories offer is flagged, and needs its "
+      + "category when it is declared.",
+    inputSchema: { type: "object", properties: {} },
+  },
+  {
+    name: "image_add",
+    description:
+      "Declare an image in this project, from a template image_templates "
+      + "names. Declaring does not create the image: the first image_start "
+      + "does, from this template. The first image declared becomes the "
+      + "project's default.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        id: {
+          type: "string",
+          description: "Short id this project calls the image by, such as dev.",
+        },
+        template: {
+          type: "string",
+          description: "Template name, exactly as image_templates gives it.",
+        },
+        category: {
+          type: "string",
+          description:
+            "Template category. Needed only for a name two categories offer.",
+        },
+        profile: {
+          type: "string",
+          description: "Pharo Launcher profile to create the image under.",
+        },
+      },
+      required: ["id", "template"],
+    },
+  },
   {
     name: "image_start",
     description:
@@ -95,6 +137,20 @@ async function runningImageTools(projectRoot, defaultImage) {
     .map((tool) => withImageSelector(tool, running.imageId));
 }
 
+// A schema is a description, not a guard: nothing between the model and here
+// enforces it, and a declaration missing its template would otherwise fail
+// somewhere further in, naming a field the caller never saw.
+function declarationFrom(argumentsValue) {
+  const { id, template, category, profile } = argumentsValue;
+  if (typeof id !== "string" || id === "") {
+    throw new Error("image_add needs the id this project will call the image by.");
+  }
+  if (typeof template !== "string" || template === "") {
+    throw new Error("image_add needs a template name, as image_templates gives it.");
+  }
+  return { id, template, category, profile };
+}
+
 export async function serveImagesMcp(resolveProjectRoot, defaultImage) {
   const server = new Server(
     { name: "pharo-agent", version },
@@ -108,10 +164,10 @@ export async function serveImagesMcp(resolveProjectRoot, defaultImage) {
     } catch {
       // No project here. The lifecycle tools are still listed rather than
       // nothing, so the host has a server that works and a call can say why.
-      return { tools: lifecycleTools };
+      return { tools: projectTools };
     }
     return {
-      tools: [...lifecycleTools, ...(await runningImageTools(projectRoot, defaultImage))],
+      tools: [...projectTools, ...(await runningImageTools(projectRoot, defaultImage))],
     };
   });
 
@@ -121,9 +177,15 @@ export async function serveImagesMcp(resolveProjectRoot, defaultImage) {
     // Throws when there is no project, which is the answer the caller needs.
     const projectRoot = resolveProjectRoot();
 
-    // Matched before the image's catalogue: these three names belong to this
+    // Matched before the image's catalogue: these names belong to this
     // server, and an image that happened to hold one must not decide what
     // starting an image means.
+    if (request.params.name === "image_templates") {
+      return toolResult({ ok: true, ...(await listImageTemplates(projectRoot)) });
+    }
+    if (request.params.name === "image_add") {
+      return toolResult({ ok: true, ...addImage(projectRoot, declarationFrom(argumentsValue)) });
+    }
     if (request.params.name === "image_start") {
       const started = await startAgentImage(projectRoot, selected);
       await server.sendToolListChanged();

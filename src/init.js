@@ -120,7 +120,9 @@ outside generated/copied files and outside the host guide's managed block.
 Refreshing project files does not install a newer package or upgrade image tools.
 
 \`plexus.json\` declares this project's images. A freshly initialized
-project declares none; register one before the first \`pharo-agent image start\`:
+project declares none; register one before the first image start. With the
+pharo-agent plugin enabled, that is \`image_templates\` and then \`image_add\`,
+with no shell. Otherwise:
 
 \`\`\`sh
 pharo-agent image templates
@@ -142,8 +144,9 @@ installed the image's source is also projected under \`.pharo-agent/mounts\`
 and can be edited as files; everywhere else the Pharo tools are the way in,
 and \`image start\` says so.
 
-With the pharo-agent plugin enabled for this project, the image's tools are MCP
-tools: start an image with \`image_start\` and call the rest by name. Without it,
+With the pharo-agent plugin enabled for this project, this is all MCP tools:
+declare an image with \`image_add\`, start it with \`image_start\`, and call the
+image's own tools by name. Without it,
 call a tool with \`pharo-agent pharo <tool> [arguments-json]\`, and
 \`pharo-agent mcp\` serves the same surface as a command-scoped stdio MCP
 server.
