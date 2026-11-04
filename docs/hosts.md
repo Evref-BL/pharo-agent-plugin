@@ -63,7 +63,7 @@ Claude Code:
 ```
 
 The plugin carries one skill, which runs the setup above for the current
-project, and declares the `image` MCP server. A host starts that server when a
+project, and declares the `pharo` MCP server. A host starts that server when a
 session starts, so a chat where the plugin is enabled reaches the image's
 tools with nothing configured by hand; it loads the server's name and
 instructions, not every tool definition.
@@ -86,10 +86,10 @@ and brings the marketplace with it:
 }
 ```
 
-A host installs a plugin by cloning the repository and runs no `npm install`
-in it, so the declared server is not a path into the plugin: it runs the
-published release that matches the plugin's version, through `npx`. The first
-start downloads it.
+The declared server is the plugin's own `bin/pharo-agent.js`, under
+`${CLAUDE_PLUGIN_ROOT}`. Claude Code installs a plugin's npm dependencies with
+it, so the copy in the plugin cache runs as it does from a checkout, and the
+chat always talks to the version of the code it installed.
 
 OpenCode has no plugin manifest here; it uses the same CLI with
 `--host opencode`.

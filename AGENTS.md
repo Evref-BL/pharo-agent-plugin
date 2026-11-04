@@ -33,10 +33,11 @@ own, which a host starts only where the plugin is enabled.
   copied skill only when necessary.
 - Pin runtime npm dependencies to released exact versions; do not use local
   workspace links or floating ranges.
-- The setup skill and the declared MCP server must work from a plugin cache
-  without `node_modules`, which is what a host installing from git gives them.
-  Keep each one's `npx` command pinned to the matching CLI release, and let
-  `scripts/set-version.mjs` move both pins.
+- The setup skill runs in a project, not in the plugin, so it installs the CLI
+  itself. Keep its one `npx` command pinned to the matching CLI release, which
+  `scripts/set-version.mjs` moves. The declared MCP server runs the plugin's
+  own `bin/pharo-agent.js` instead: a host installs the plugin's dependencies
+  with it, and a chat should reach the version of the code it installed.
 
 ## Validation
 
