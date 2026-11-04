@@ -91,6 +91,11 @@ The declared server is the plugin's own `bin/pharo-agent.js`, under
 it, so the copy in the plugin cache runs as it does from a checkout, and the
 chat always talks to the version of the code it installed.
 
+A new release does not arrive on its own: a marketplace auto-updates only
+once you turn that on, under **Marketplaces** in `/plugin`. Otherwise run
+`/plugin marketplace update evref-bl` first, or Claude Code compares against
+the catalog it fetched when you installed and reports that you are up to date.
+
 OpenCode has no plugin manifest here; it uses the same CLI with
 `--host opencode`.
 
