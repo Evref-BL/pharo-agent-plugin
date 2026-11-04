@@ -50,7 +50,7 @@ In Claude Code, install it as a plugin:
 ```
 
 Then ask the agent to enable Pharo tooling in a project. The plugin carries a
-setup skill that does it, and declares the `image` MCP server, so a running
+setup skill that does it, and declares the `pharo` MCP server, so a running
 image's tools reach the chat with nothing configured by hand.
 [Hosts](docs/hosts.md) covers enabling it per project rather than everywhere.
 
