@@ -5,7 +5,9 @@ import path from "node:path";
 import test from "node:test";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { addImage } from "../src/images.js";
 import { createProjectConfig } from "../src/project.js";
+import { writeRunningImages } from "../src/runtime.js";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const binary = path.join(root, "bin/pharo-agent.js");
@@ -159,6 +161,49 @@ test("a directory with no project still gets a server rather than a dead one", (
     assert.deepEqual(tools.map((tool) => tool.name), projectToolNames);
   } finally {
     fs.rmSync(elsewhere, { recursive: true, force: true });
+  }
+});
+
+// The project's record of a started image, and what PLexus keeps for it: its
+// state, saying it runs as `pid`, and the endpoint the image handed over, on a
+// port nothing listens on.
+function recordUnansweringImage(cwd, pid) {
+  const statePath = path.join(cwd, "state.json");
+  const endpoint = { transport: "http", host: "127.0.0.1", port: 1, path: "/", pid };
+  fs.writeFileSync(statePath, `${JSON.stringify({
+    projectId: "project",
+    projectName: "project",
+    workspaceId: "workspace",
+    images: [{ id: "dev", status: "running", pid, mcpServers: [{ id: "dev", endpoint }] }],
+  })}\n`);
+  fs.mkdirSync(path.join(cwd, "mcp-endpoints"));
+  fs.writeFileSync(
+    path.join(cwd, "mcp-endpoints", "dev.properties"),
+    Object.entries(endpoint).map(([key, value]) => `${key}=${value}`).join("\n"),
+  );
+  writeRunningImages(cwd, { dev: { statePath, imageId: "dev", mcpServerId: "dev" } });
+}
+
+test("an image that does not answer leaves the lifecycle tools listed", () => {
+  // Failing the whole list took image_start with it, so an agent whose image
+  // had crashed could neither see what was wrong nor start it again. PLexus
+  // skips an image whose process is gone, so a lone crashed image listed
+  // nothing quietly; it failed beside another running image, whose schema
+  // was not the one asked for. Any image it does ask and gets no answer from
+  // fails the same way, and this one is still running, on a port nobody
+  // listens on.
+  const cwd = temporaryProject();
+  try {
+    addImage(cwd, { id: "dev", template: "Pharo 14.0 - 64bit (next stable)" });
+    recordUnansweringImage(cwd, process.pid);
+
+    const { served, tools } = listTools({ cwd });
+
+    assert.equal(served.status, 0, served.stderr);
+    assert.deepEqual(tools?.map((tool) => tool.name), projectToolNames, served.stdout);
+    assert.match(served.stderr, /image dev listed no tools/);
+  } finally {
+    fs.rmSync(cwd, { recursive: true, force: true });
   }
 });
 

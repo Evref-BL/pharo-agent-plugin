@@ -9,7 +9,9 @@ import {
   describeLifecycleFailure,
   fuseLibraryPath,
   imageCreationPlan,
+  isMountedAt,
   pharoMcpWarning,
+  releaseProjectionMount,
   projectionAvailability,
   projectionUnavailableWarning,
   fetchPifsRelease,
@@ -520,4 +522,64 @@ test("a missing projection says the image and its tools are still there", () => 
 
   assert.match(warning, /Image dev is running with its Pharo tools/);
   assert.match(warning, /no source projection/);
+});
+
+// The line fuse-t's mount prints, as `mount` lists it on macOS.
+function fuseMountLine(mountPath) {
+  return `fuse-t:/Project-Workspace-dev on ${mountPath} (nfs, nodev, nosuid, mounted by someone)`;
+}
+
+test("a mount is found by the path the mount table prints", () => {
+  // macOS resolves a project's temporary directory through /private, and
+  // prints the resolved path.
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "pharo-agent-mount-"));
+  try {
+    const mountPath = path.join(root, "dev");
+    const printed = path.join(fs.realpathSync(root), "dev");
+    const table = ["/dev/disk3s1 on / (apfs, local)", fuseMountLine(printed)].join("\n");
+
+    assert.equal(isMountedAt(mountPath, table), true);
+    assert.equal(isMountedAt(path.join(root, "de"), table), false, "a prefix is another path");
+    assert.equal(isMountedAt(path.join(root, "other"), table), false);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("a projection left mounted by an image that is gone is unmounted", () => {
+  let table = fuseMountLine("/project/.pharo-agent/mounts/dev");
+  const unmounted = [];
+  const host = {
+    mountTable: () => table,
+    unmount: (mountPath) => {
+      unmounted.push(mountPath);
+      table = "";
+    },
+  };
+
+  assert.equal(releaseProjectionMount("/project/.pharo-agent/mounts/dev", host), true);
+  assert.deepEqual(unmounted, ["/project/.pharo-agent/mounts/dev"]);
+});
+
+test("a path with nothing mounted is left alone", () => {
+  const host = {
+    mountTable: () => fuseMountLine("/project/.pharo-agent/mounts/other"),
+    unmount: () => assert.fail("nothing to unmount"),
+  };
+
+  assert.equal(releaseProjectionMount("/project/.pharo-agent/mounts/dev", host), false);
+  assert.equal(releaseProjectionMount(undefined, host), false, "an image started with no projection");
+});
+
+test("a mount that will not go says where it is and how to remove it", () => {
+  // The next projection cannot mount over it, so starting has to stop here.
+  const host = {
+    mountTable: () => fuseMountLine("/project/.pharo-agent/mounts/dev"),
+    unmount: () => {},
+  };
+
+  assert.throws(
+    () => releaseProjectionMount("/project/.pharo-agent/mounts/dev", host),
+    /still mounted at \/project\/\.pharo-agent\/mounts\/dev.*umount "\/project\/\.pharo-agent\/mounts\/dev"/,
+  );
 });

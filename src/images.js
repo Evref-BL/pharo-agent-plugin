@@ -1,6 +1,12 @@
 import { declareProjectImage, removeProjectImage } from "@evref-bl/plexus";
 import { configuredImages } from "./project.js";
-import { defaultImageId, readConfig, readRunningImages, writeConfig } from "./runtime.js";
+import {
+  defaultImageId,
+  readConfig,
+  readRunningImages,
+  recordedImageIsRunning,
+  writeConfig,
+} from "./runtime.js";
 
 export const defaultLoadScript = "pharo/load-mcp.st";
 
@@ -26,14 +32,20 @@ export function listImages(projectRoot) {
   return {
     ...(defaultImage ? { defaultImage } : {}),
     images: configured.map((image) => {
+      const record = running[image.id];
+      // A record says this project started the image, not that it is still
+      // there. One that crashed or was closed keeps its record until it is
+      // started or stopped again, and its route and mount lead nowhere.
+      const alive = record !== undefined && recordedImageIsRunning(record);
       // The record repeats the id it is keyed by; everything else in it is
       // runtime detail this list carries when the image is running.
-      const { imageId: _keyed, ...runtime } = running[image.id] ?? {};
+      const { imageId: _keyed, ...runtime } = alive ? record : {};
       return {
         id: image.id,
         imageName: image.imageName,
         isDefault: image.id === defaultImage,
-        running: Boolean(running[image.id]),
+        running: alive,
+        ...(record !== undefined && !alive ? { exited: true } : {}),
         ...runtime,
         templateName: image.create?.templateName,
         templateCategory: image.create?.templateCategory,

@@ -11,7 +11,8 @@ const commands = {
   "image list": {
     usage: "image list",
     description: "List the project's declared images and the default one, with the mount and\n"
-      + "projection port of each image this project has running.",
+      + "projection port of each image this project has running. An image this project\n"
+      + "started that has since exited is listed as exited.",
     example: "image list",
   },
   "image templates": {

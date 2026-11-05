@@ -86,6 +86,58 @@ export function pifsStopCode(projectionPort) {
   return `(Smalltalk globals at: #PIFSServer) stopOn: ${projectionPort}`;
 }
 
+// `mount` prints one "<source> on <path> (<options>)" line per mount, with the
+// path resolved, so a project under a symlink is looked for by its real path.
+export function isMountedAt(mountPath, mountTable) {
+  let realPath = mountPath;
+  try {
+    realPath = path.join(fs.realpathSync(path.dirname(mountPath)), path.basename(mountPath));
+  } catch {
+    // No parent directory, so nothing can be mounted there either.
+  }
+  return mountTable
+    .split("\n")
+    .some((line) => line.includes(` on ${mountPath} (`) || line.includes(` on ${realPath} (`));
+}
+
+function currentMountTable() {
+  return spawnSync("mount", [], { encoding: "utf8" }).stdout ?? "";
+}
+
+function unmount(mountPath) {
+  // What PIFSServer>>stopDaemon runs when it stops a projection itself.
+  if (spawnSync("umount", [mountPath], { stdio: "ignore" }).status !== 0) {
+    spawnSync("diskutil", ["unmount", mountPath], { stdio: "ignore" });
+  }
+}
+
+/**
+ * Unmount a projection whose image is gone.
+ *
+ * The mount is served by a PIFS daemon, a process of its own that reads the
+ * source over HTTP from the image. PIFS unmounts it from inside the image when
+ * it stops, which an image that crashed or was closed never does: the mount
+ * stays, every read in it fails with an I/O error, and it holds the path
+ * against the next projection. Unmounting is enough; the daemon exits with its
+ * mount.
+ *
+ * @param {string | undefined} mountPath
+ * @param {{ mountTable?: () => string, unmount?: (path: string) => void }} [host]
+ * @returns {boolean} whether something was unmounted
+ */
+export function releaseProjectionMount(mountPath, host = {}) {
+  const mountTable = host.mountTable ?? currentMountTable;
+  if (mountPath === undefined || !isMountedAt(mountPath, mountTable())) return false;
+  (host.unmount ?? unmount)(mountPath);
+  if (isMountedAt(mountPath, mountTable())) {
+    throw new Error(
+      `The source projection of an image that is gone is still mounted at ${mountPath},`
+        + ` and could not be unmounted. Run umount ${JSON.stringify(mountPath)}, then try again.`,
+    );
+  }
+  return true;
+}
+
 function namedPrintString(value) {
   // Structured results name the print string, somewhere under the envelope,
   // and reach us either as an object or as JSON inside a text part.
@@ -208,6 +260,11 @@ export async function startAgentImage(projectRoot, imageId) {
     restarted = true;
   }
   if (projectionAvailability().available) {
+    // This project has no live image at this mount path now: none was
+    // recorded, or the one recorded has exited. Whatever is still mounted
+    // there was left by an image that is gone, and would hold the path
+    // against the projection about to be mounted.
+    releaseProjectionMount(resolveMountPath(projectRoot, readConfig(projectRoot), resolved));
     fetchPifsRelease(pifsCloneDirectory(projectRoot));
   }
   const launcher = new ScopedPharoLauncher({ projectRoot });
@@ -319,9 +376,14 @@ async function stopOneImage(projectRoot, runningImages, imageId) {
   // ask over either.
   if (record.projectionPort !== undefined) {
     try {
-      await callImageTool(projectRoot, record, "image_evaluate", {
-        code: pifsStopCode(record.projectionPort),
-      });
+      if (recordedImageIsRunning(record)) {
+        await callImageTool(projectRoot, record, "image_evaluate", {
+          code: pifsStopCode(record.projectionPort),
+        });
+      } else {
+        // PIFS stops a projection from inside its image, and this one is gone.
+        releaseProjectionMount(record.mountPath);
+      }
     } catch (error) {
       projectionError = error;
     }
