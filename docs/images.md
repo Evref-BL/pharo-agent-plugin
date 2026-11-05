@@ -45,6 +45,14 @@ image at all.
 `image stop --all` stops every image this project started. Over `mcp`, each
 Pharo tool takes the same optional `image` argument.
 
+## When an image exits
+
+An image can exit without being stopped: it crashes, or its window is closed.
+`image list` then lists it as `exited` rather than running, and the `mcp`
+server lists its own tools without the image's. `image start` starts it again,
+and `image stop` forgets it. Either one also unmounts the source projection
+the image left behind, which nothing in the image is left to unmount.
+
 ## Where the source projection works
 
 An image and its Pharo tools run anywhere Node does. Projecting its source as

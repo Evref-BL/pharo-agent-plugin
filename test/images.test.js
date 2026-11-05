@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -15,9 +16,13 @@ function temporaryProject() {
   return root;
 }
 
-function runImage(root, imageId) {
+// The record `image start` writes, and the PLexus state it points at, saying
+// the image runs as `pid`: this test's own process unless told otherwise.
+function runImage(root, imageId, pid = process.pid) {
+  const statePath = path.join(root, "state.json");
+  fs.writeFileSync(statePath, `${JSON.stringify({ images: [{ id: imageId, status: "running", pid }] })}\n`);
   writeRunningImages(root, {
-    [imageId]: { imageId, mcpServerId: "server", mountPath: "/tmp/mount", projectionPort: 1 },
+    [imageId]: { statePath, imageId, mcpServerId: imageId, mountPath: "/tmp/mount", projectionPort: 1 },
   });
 }
 
@@ -109,6 +114,22 @@ test("the default image can change while another image is running", () => {
       listImages(root).images.map((image) => image.projectionPort),
       [1, undefined],
     );
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("an image whose process has exited is listed as exited, not running", () => {
+  const root = temporaryProject();
+  try {
+    addImage(root, { id: "dev", template: "Pharo 13" });
+    runImage(root, "dev", spawnSync(process.execPath, ["-e", ""]).pid);
+
+    const [listed] = listImages(root).images;
+    assert.equal(listed.running, false);
+    assert.equal(listed.exited, true);
+    assert.equal(listed.mountPath, undefined, "the mount of an image that is gone leads nowhere");
+    assert.equal(listed.projectionPort, undefined);
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }

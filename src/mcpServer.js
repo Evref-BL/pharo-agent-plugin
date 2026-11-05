@@ -98,7 +98,8 @@ const projectTools = [
     name: "image_list",
     description:
       "List this project's declared images, which are running, and the route "
-      + "and mount of each running one.",
+      + "and mount of each running one. An image that was started and has "
+      + "exited since is listed as exited; image_start starts it again.",
     inputSchema: { type: "object", properties: {} },
   },
   {
@@ -133,8 +134,17 @@ async function runningImageTools(projectRoot, defaultImage) {
     // contributes no tools yet and the lifecycle tools say how to change that.
     return [];
   }
-  return (await listImageTools(projectRoot, running))
-    .map((tool) => withImageSelector(tool, running.imageId));
+  try {
+    return (await listImageTools(projectRoot, running))
+      .map((tool) => withImageSelector(tool, running.imageId));
+  } catch (error) {
+    // A record says this project started the image, not that it still
+    // answers: it may have exited, or hung. Failing the whole list would take
+    // image_start with it, and with it the one way back. image_list says
+    // which image is gone; stderr reaches the host's log.
+    console.error(`pharo-agent: image ${running.imageId} listed no tools: ${error.message}`);
+    return [];
+  }
 }
 
 // A schema is a description, not a guard: nothing between the model and here
