@@ -572,8 +572,7 @@ test("a path with nothing mounted is left alone", () => {
 });
 
 test("a mount that will not go says where it is and how to remove it", () => {
-  // Mounting over it would fail in the daemon, where nobody reads it, while
-  // PIFS still reported a port.
+  // The next projection cannot mount over it, so starting has to stop here.
   const host = {
     mountTable: () => fuseMountLine("/project/.pharo-agent/mounts/dev"),
     unmount: () => {},

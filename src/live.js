@@ -117,9 +117,9 @@ function unmount(mountPath) {
  * The mount is served by a PIFS daemon, a process of its own that reads the
  * source over HTTP from the image. PIFS unmounts it from inside the image when
  * it stops, which an image that crashed or was closed never does: the mount
- * stays, every read in it fails with an I/O error, and the next mount at that
- * path fails while PIFS still answers a port. Unmounting is enough; the daemon
- * exits with its mount.
+ * stays, every read in it fails with an I/O error, and it holds the path
+ * against the next projection. Unmounting is enough; the daemon exits with its
+ * mount.
  *
  * @param {string | undefined} mountPath
  * @param {{ mountTable?: () => string, unmount?: (path: string) => void }} [host]
