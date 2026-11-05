@@ -166,8 +166,21 @@ export function selectRunningImage(state, imageId) {
 // is a supported way to run — it is what the policy is for — but nothing said
 // so, and the image's tools then quietly differ from the ones the project was
 // written against. PLexus records it; this says it.
+//
+// An image copied from a home image cache base is another matter: PLexus keys
+// a base on what preparing it loaded and says whether that is still what the
+// project loads. A `current` base holds the project's own MCP, and warning
+// about it told every new image the opposite of what happened; an `outdated`
+// one certainly holds another. Only an image nobody can vouch for gets the
+// hedged warning.
 export function unappliedPharoMcpPin(image) {
-  if (image?.pharoMcpLoad?.state !== "provided") return undefined;
+  const load = image?.pharoMcpLoad;
+  if (load?.state !== "provided" || load.preparedBase === "current") return undefined;
+  if (load.preparedBase === "outdated") {
+    return `Image ${image.id} kept the Pharo MCP it was prepared with, which is not the one this project`
+      + " loads now, so its tools may differ from the ones this project expects."
+      + " Recreate the image, or set mcp.loadPolicy to always.";
+  }
   return `Image ${image.id} started with the Pharo MCP it already had, so the version this project pins`
     + " was not loaded and its tools may differ from the ones this project expects."
     + " Recreate the image, or set mcp.loadPolicy to always.";

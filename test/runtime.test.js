@@ -403,6 +403,27 @@ test("an image that kept its own Pharo MCP says the pin was not applied", () => 
   assert.match(warning, /mcp\.loadPolicy to always/);
 });
 
+test("an image copied from a base that loaded what the project loads says nothing", () => {
+  assert.equal(
+    unappliedPharoMcpPin({
+      id: "p14",
+      pharoMcpLoad: { state: "provided", loadPolicy: "ifMissing", preparedBase: "current" },
+    }),
+    undefined,
+  );
+});
+
+test("an image whose base the project has moved on from says it holds another Pharo MCP", () => {
+  const warning = unappliedPharoMcpPin({
+    id: "p14",
+    pharoMcpLoad: { state: "provided", loadPolicy: "ifMissing", preparedBase: "outdated" },
+  });
+
+  assert.ok(warning);
+  assert.match(warning, /^Image p14 kept the Pharo MCP it was prepared with, which is not the one this project loads now/);
+  assert.match(warning, /mcp\.loadPolicy to always/);
+});
+
 test("an image that loaded the pinned Pharo MCP says nothing", () => {
   assert.equal(
     unappliedPharoMcpPin({ id: "p14", pharoMcpLoad: { state: "loaded" } }),
