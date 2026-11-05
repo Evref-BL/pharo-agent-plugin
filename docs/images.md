@@ -85,13 +85,21 @@ and no source projection, and a tool call against it says so.
 An image that already carries a Pharo MCP keeps it: `mcp.loadPolicy` defaults
 to `ifMissing`, so the version the project pins is not loaded over one that is
 already there. That is what the policy is for, and the image works, but its
-tools are whatever that MCP has rather than what this project was written
-against. `image start` says so:
+tools are whatever that MCP has.
+
+An image created by `image start` is copied from a base prepared with what the
+project loads, so its MCP is the project's own and nothing is said. Once the
+project loads something else, a newer pin or an edited load script, an image
+created before keeps what it was prepared with, and `image start` says so:
 
 ```json
 { "ok": true, "imageId": "p13",
-  "warning": "Image p13 started with the Pharo MCP it already had, ..." }
+  "warning": "Image p13 kept the Pharo MCP it was prepared with, which is not the one this project loads now, ..." }
 ```
+
+An image whose origin nothing recorded, created before PLexus kept track, gets
+the same warning hedged: it started with the Pharo MCP it already had, so the
+version the project pins may not be the one it runs.
 
 A `-32601` from such an image repeats the warning: a tool that is plainly in
 the catalogue, and answers that it does not exist, is otherwise a puzzle.
