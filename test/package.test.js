@@ -36,6 +36,12 @@ test("setup skill installs the matching CLI release", () => {
   assert.match(skill, new RegExp(`@evref-bl/pharo-agent@${packageJson.version} init --host claude`));
 });
 
+test("feedback skill names the release it ships with", () => {
+  const packageJson = readJson("package.json");
+  const skill = fs.readFileSync(path.join(root, "skills/pharo-feedback/SKILL.md"), "utf8");
+  assert.ok(skill.includes(`\`pharo-agent ${packageJson.version}\``));
+});
+
 test("marketplaces expose the plugin from the repository root", () => {
   const codexMarketplace = readJson(".agents/plugins/marketplace.json");
   const claudeMarketplace = readJson(".claude-plugin/marketplace.json");
