@@ -87,6 +87,12 @@ Pharo work only, so Pharo instructions stay out of unrelated chats. The guide
 and what it refers to are maintained by the MCP project and copied from the
 release this plugin pins. [Hosts](docs/hosts.md) lists the paths it owns.
 
+**A way to report what got in its way.** The plugin's feedback skill has the
+agent look back over the conversation for tool calls that failed, misled it or
+needed a workaround, and draft issues for the tools' maintainers. It offers
+itself at the end of Pharo work where that happened, searches for existing
+issues first, and files only the drafts you approve.
+
 ## Refreshing after an upgrade
 
 Upgrade the plugin the way you installed it, then run the setup command again

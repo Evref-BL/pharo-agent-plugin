@@ -12,14 +12,16 @@ test("set-version synchronizes published version references", () => {
   const temporaryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "pharo-agent-version-"));
   try {
     fs.mkdirSync(path.join(temporaryDirectory, ".claude-plugin"));
-    fs.mkdirSync(path.join(temporaryDirectory, "skills", "pharo-setup"), { recursive: true });
     for (const file of ["package.json", "plugin.json", ".claude-plugin/plugin.json"]) {
       fs.copyFileSync(path.join(root, file), path.join(temporaryDirectory, file));
     }
-    fs.copyFileSync(
-      path.join(root, "skills", "pharo-setup", "SKILL.md"),
-      path.join(temporaryDirectory, "skills", "pharo-setup", "SKILL.md"),
-    );
+    for (const skill of ["pharo-setup", "pharo-feedback"]) {
+      fs.mkdirSync(path.join(temporaryDirectory, "skills", skill), { recursive: true });
+      fs.copyFileSync(
+        path.join(root, "skills", skill, "SKILL.md"),
+        path.join(temporaryDirectory, "skills", skill, "SKILL.md"),
+      );
+    }
 
     execFileSync(process.execPath, [path.join(root, "scripts", "set-version.mjs"), "0.1.1"], {
       cwd: temporaryDirectory,
@@ -31,6 +33,10 @@ test("set-version synchronizes published version references", () => {
     assert.match(
       fs.readFileSync(path.join(temporaryDirectory, "skills", "pharo-setup", "SKILL.md"), "utf8"),
       /@evref-bl\/pharo-agent@0\.1\.1 init --host claude/,
+    );
+    assert.match(
+      fs.readFileSync(path.join(temporaryDirectory, "skills", "pharo-feedback", "SKILL.md"), "utf8"),
+      /`pharo-agent 0\.1\.1`/,
     );
   } finally {
     fs.rmSync(temporaryDirectory, { recursive: true, force: true });
