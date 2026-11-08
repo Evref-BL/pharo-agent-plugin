@@ -117,6 +117,10 @@ jobs:
         uses: peter-evans/create-pull-request@v7
         with:
           token: ${{ steps.app-token.outputs.token }}
+          # The bot as author and committer both: left unset, the committer is
+          # github-actions[bot] and the author whoever started the run.
+          author: devnexus-automation[bot] <286661136+devnexus-automation[bot]@users.noreply.github.com>
+          committer: devnexus-automation[bot] <286661136+devnexus-automation[bot]@users.noreply.github.com>
           branch: automation/update-plexus-v${{ steps.release.outputs.plexus_version }}
           delete-branch: true
           commit-message: "chore: pin PLexus v${{ steps.release.outputs.plexus_version }} and MCP v${{ steps.release.outputs.mcp_version }}"
