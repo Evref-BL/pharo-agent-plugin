@@ -3,75 +3,61 @@ import { hostChoices, hostIds } from "./hosts.js";
 const commands = {
   init: {
     usage: `init --host <${hostChoices()}> [--mount-root <path>]`,
-    description: "Initialize the current project for the required agent host. Write its managed instruction block,\n"
-      + "pharo.AGENTS.md, and workflow skills/references. Re-run to refresh those generated files.\n"
-      + "The mount root defaults to .pharo-agent/mounts; omit --mount-root to keep an existing setting.",
+    description: "Write this project's Pharo guide, skills and references for the host. Re-run to refresh\n"
+      + "them. --mount-root sets where sources mount, .pharo-agent/mounts by default.",
     example: `init --host ${hostIds[0]}`,
   },
   "image list": {
     usage: "image list",
-    description: "List the project's declared images and the default one, with the mount and\n"
-      + "projection port of each image this project has running. An image this project\n"
-      + "started that has since exited is listed as exited.",
+    description: "List the declared images, the default, and the mount and port of each running one.",
     example: "image list",
   },
   "image templates": {
     usage: "image templates",
-    description: "List available launcher templates and their categories. A name in several categories\n"
-      + "needs --category when passed to image add.",
+    description: "List the templates images can be made from, with their categories.",
     example: "image templates",
   },
   "image add": {
     usage: "image add <id> --template <name> [--category <name>] [--profile <id>]",
-    description: "Declare an image with a required id and template name; image start creates it later.\n"
-      + "Use --category for an ambiguous template name and --profile to choose a launcher profile.\n"
-      + "The first declared image becomes the default.",
-    example: "image add dev --template '<template name>'",
+    description: "Declare an image; image start creates it. Name it after what it is for, like a branch.\n"
+      + "The first declared image is the default. --category is for a name two categories offer.",
+    example: "image add pretty-print-formatter --template '<template name>'",
   },
   "image use": {
     usage: "image use <id>",
-    description: "Make the required declared image the project's default. It may already be running.",
+    description: "Make an image the default.",
     example: "image use dev",
   },
   "image remove": {
     usage: "image remove <id>",
-    description: "Remove the required image declaration. Stop the image first. Its image files are kept.\n"
-      + "Removing the default image clears the default selection.",
+    description: "Drop an image's declaration. Stop it first; its files are kept.",
     example: "image remove dev",
   },
   "image start": {
     usage: "image start [<id>]",
-    description: "Create if needed and start an image with its Pharo tools. Omit the id to use the\n"
-      + "project's default image. Images already running stay running. A source projection is\n"
-      + "mounted on macOS with fuse-t; elsewhere the image starts without one and says so.\n"
-      + "Pharo versions outside the MCP support range start without tools or a projection.",
+    description: "Create if needed and start an image, the default one without an id. Others keep running.\n"
+      + "On macOS with fuse-t its source mounts as files.",
     example: "image start dev",
   },
   "image stop": {
     usage: "image stop [<id>] [--all]",
-    description: "Stop the named image and any source projection it has, or the project's default\n"
-      + "image when no id is given. Use --all to stop every image this project started.",
+    description: "Stop an image and its source mount, the default one without an id, or --all of them.",
     example: "image stop dev",
   },
   mcp: {
     usage: "mcp [--image <id>]",
-    description: "Serve this project's images as a command-scoped stdio MCP server. Omit\n"
-      + "--image to use the project's default image. It starts whether or not an image\n"
-      + "is running: image_start starts one and the image's own tools join the list. The\n"
-      + "server exits with this command, and the plugin's .mcp.json starts it for a host.",
+    description: "Serve this project's images as a stdio MCP server, as the plugin does for a host.",
     example: "mcp --image dev",
   },
   "pharo list": {
     usage: "pharo list [--image <id>]",
-    description: "List a running image's advertised tools. Omit --image to use the project's default image.\n"
-      + "Use tool_search and tool_get to discover and inspect the rest of its catalogue.",
+    description: "List a running image's advertised tools. tool_search and tool_get find the rest.",
     example: "pharo list",
   },
   pharo: {
     usage: "pharo <tool> [arguments-json] [--image <id>]",
-    description: "Call a tool in a running image. Arguments must be a JSON object and default to {}.\n"
-      + "Omit --image to use the project's default image. Inspect the tool's schema with tool_get\n"
-      + "before calling it; a failed tool result makes the command exit unsuccessfully.",
+    description: "Call a tool in a running image with a JSON object of arguments, {} by default.\n"
+      + "Read its schema with tool_get first.",
     example: 'pharo tool_get \'{"name":"class_search"}\'',
   },
 };

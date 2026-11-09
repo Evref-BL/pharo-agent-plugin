@@ -28,17 +28,10 @@ shell.
 
 ## When to make another image
 
-An image holds one line of work and takes one writer. It has no branches, so
-two agents in one image share every edit, and one export writes both. The
-guidance therefore has agents make an image rather than share or reuse one:
-for a new subject, beside another agent or session, and when the image at hand
-was made for something else or has fallen behind. From the prepared base, an
-image is created and started in seconds.
-
-The project's first image is its default, the main line. The others are named
-like branches, after what they are for (`pretty-print-formatter`), rather than
-after a version or a role (`p15`, `dev2`), which every subject has and so
-invites every session in.
+An image takes one writer, so agents are told to make a new one, in seconds,
+for each new subject or parallel agent rather than share one, and to name it
+like a branch (`pretty-print-formatter`, not `p15`). The first image declared
+is the default, the main line.
 
 ## Managing declarations
 
