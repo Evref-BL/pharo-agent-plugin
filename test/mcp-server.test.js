@@ -220,10 +220,12 @@ test("an image is declared through the server, with no shell", () => {
 
     assert.equal(served.status, 0, served.stderr);
     assert.equal(result.isError, undefined, served.stdout);
-    assert.deepEqual(answerOf(result), {
+    // The name is PLexus's default template, whose exact form is PLexus's.
+    const { imageName, ...answer } = answerOf(result);
+    assert.match(imageName, /\{workspaceId\}-dev$/);
+    assert.deepEqual(answer, {
       ok: true,
       id: "dev",
-      imageName: "{projectName}-{workspaceId}-dev",
       isDefault: true,
       templateName: "Pharo 14.0 - 64bit (next stable)",
     });

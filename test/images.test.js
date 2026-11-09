@@ -36,9 +36,9 @@ test("the first registered image becomes the default one", () => {
     const added = addImage(root, { id: "dev", template: "Pharo 13.0 - 64bit (stable)" });
 
     assert.equal(added.isDefault, true);
-    // A template PLexus expands at launch, rather than the project name
-    // baked in when the image was declared.
-    assert.equal(added.imageName, "{projectName}-{workspaceId}-dev");
+    // A template PLexus expands at launch, rather than a name baked in when
+    // the image was declared. Its exact form is PLexus's default.
+    assert.match(added.imageName, /\{workspaceId\}-dev$/);
     const [image] = configuredImages(root);
     // The policy is PLexus's default, so the declaration does not repeat it.
     assert.equal(image.mcp.loadPolicy, undefined);
