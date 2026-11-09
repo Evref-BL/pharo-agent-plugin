@@ -169,6 +169,32 @@ Several images can run at once. \`pharo-agent image start <id>\` and
 
 Image, Tonel, Iceberg, disk Git, and host processes are separate states.
 
+## When to make an image
+
+An image holds one line of work and takes one writer: it has no branches, so
+two agents in one image share every edit, and one export writes both. Images
+are cheap, created and started in seconds, so make a new one rather than share
+or reuse one:
+
+- for a new subject: another fix, an experiment, a review, another branch;
+- beside another agent or session working in this project;
+- when the image you would use was made for something else, or has fallen
+  behind: a fresh image beats upgrading one in place.
+
+Name it like a branch, after what it is for, not after its version or a role
+(\`p15\`, \`dev2\`). With the plugin, \`image_add\` then \`image_start\`;
+otherwise:
+
+\`\`\`sh
+pharo-agent image add pretty-print-formatter --template '<launcher template name>'
+pharo-agent image start pretty-print-formatter
+\`\`\`
+
+The default image is the project's main line. \`image list\` says which images
+exist and which run, not which are free: a running image may be another
+session's. When its subject is done, stop the image and remove its
+declaration.
+
 ${pharoRouting()}
 `;
 }

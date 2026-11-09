@@ -26,6 +26,20 @@ and `image_add`, which takes `id`, `template`, and `category` or `profile`
 when they are needed. Declaring an image is the one step that used to need a
 shell.
 
+## When to make another image
+
+An image holds one line of work and takes one writer. It has no branches, so
+two agents in one image share every edit, and one export writes both. The
+guidance therefore has agents make an image rather than share or reuse one:
+for a new subject, beside another agent or session, and when the image at hand
+was made for something else or has fallen behind. From the prepared base, an
+image is created and started in seconds.
+
+The project's first image is its default, the main line. The others are named
+like branches, after what they are for (`pretty-print-formatter`), rather than
+after a version or a role (`p15`, `dev2`), which every subject has and so
+invites every session in.
+
 ## Managing declarations
 
 `image list` shows what the project declares, which is the default, and the
