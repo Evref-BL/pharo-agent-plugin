@@ -19,18 +19,18 @@ import { readRunningImage } from "./runtime.js";
 // defers the rest, so this is what decides whether Pharo tools are searched
 // for at all. It is the conditional guidance the generated guide gives,
 // written where the host can act on it.
-export const serverInstructions = `Live Pharo images for this project: reading and writing Smalltalk code in the
-image, running tests, finding senders and implementors, applying critiques,
-and projecting image source as files on disk.
+export const serverInstructions = `Live Pharo images for this project: reading and changing code, running tests,
+searching and critiquing it.
 
-Search these tools whenever the task involves Pharo, Smalltalk, a Tonel
-package, or a .st file. Start an image with image_start before calling the
-image's own tools, which are listed once an image answers; image_list says
-what is already running. A project that declares no image yet needs
-image_templates and image_add first.
+Search these tools for any Pharo, Smalltalk, Tonel or .st work. Start an
+image with image_start before calling its tools; a project with no image needs
+image_templates and image_add first. An image lists its common tools;
+tool_search and tool_get find the rest.
 
-The image advertises the common tools rather than all of it. Use tool_search
-and tool_get to find the rest, then call one by name like any other.`;
+An image takes one writer, and making one takes seconds: image_add a new one
+for each new subject or parallel agent rather than share one, named like a
+branch (pretty-print-formatter, not p15). The default image is the main line.
+A running image may be another session's.`;
 
 // This server's own tools, in the order a project meets them: declare an
 // image, start it, and the image's tools join the list. Listed whether or not
@@ -40,34 +40,28 @@ and tool_get to find the rest, then call one by name like any other.`;
 const projectTools = [
   {
     name: "image_templates",
-    description:
-      "List the images Pharo Launcher can create, with the category of each. "
-      + "A template name that two categories offer is flagged, and needs its "
-      + "category when it is declared.",
+    description: "List the templates images can be made from, with their categories.",
     inputSchema: { type: "object", properties: {} },
   },
   {
     name: "image_add",
     description:
-      "Declare an image in this project, from a template image_templates "
-      + "names. Declaring does not create the image: the first image_start "
-      + "does, from this template. The first image declared becomes the "
-      + "project's default.",
+      "Declare an image made from a template; image_start creates it. The "
+      + "first image declared is the default.",
     inputSchema: {
       type: "object",
       properties: {
         id: {
           type: "string",
-          description: "Short id this project calls the image by, such as dev.",
+          description: "What the image is for, named like a branch.",
         },
         template: {
           type: "string",
-          description: "Template name, exactly as image_templates gives it.",
+          description: "Template name, as image_templates gives it.",
         },
         category: {
           type: "string",
-          description:
-            "Template category. Needed only for a name two categories offer.",
+          description: "Template category, for a name two categories offer.",
         },
         profile: {
           type: "string",
@@ -80,42 +74,36 @@ const projectTools = [
   {
     name: "image_start",
     description:
-      "Start one of this project's Pharo images, creating it from its template "
-      + "when it does not exist yet. The image's own tools are listed once it "
-      + "answers. On macOS with fuse-t its source also mounts as files; "
-      + "elsewhere the image starts without that and says so.",
+      "Start an image, creating it the first time. Its tools are listed once "
+      + "it answers. On macOS with fuse-t its source also mounts as files.",
     inputSchema: {
       type: "object",
       properties: {
         image: {
           type: "string",
-          description: "Image id to start. Defaults to the project's default image.",
+          description: "Image id. Defaults to the default image.",
         },
       },
     },
   },
   {
     name: "image_list",
-    description:
-      "List this project's declared images, which are running, and the route "
-      + "and mount of each running one. An image that was started and has "
-      + "exited since is listed as exited; image_start starts it again.",
+    description: "List the declared images, which are running, and the route and mount of each.",
     inputSchema: { type: "object", properties: {} },
   },
   {
     name: "image_stop",
-    description:
-      "Stop a running image, and any source projection this project started for it.",
+    description: "Stop an image and its source mount.",
     inputSchema: {
       type: "object",
       properties: {
         image: {
           type: "string",
-          description: "Image id to stop. Defaults to the project's default image.",
+          description: "Image id. Defaults to the default image.",
         },
         all: {
           type: "boolean",
-          description: "Stop every image this project started, instead of one.",
+          description: "Stop every image this project started.",
         },
       },
     },

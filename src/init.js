@@ -110,64 +110,34 @@ function assertRoutingResolves(routing, templates) {
 function pharoGuide() {
   return `# Pharo project guide
 
-${generatedBy}. Edits here are replaced the next time it runs.
+${generatedBy}. Edits here are replaced the next time it
+runs: re-run it after upgrading the plugin, and keep your own instructions
+elsewhere.
 
-After upgrading the plugin/CLI, re-run \`pharo-agent init --host <host>\` from
-the project root with the same host to refresh this guide and the copied skills
-and references. Omit \`--mount-root\` to keep existing settings. Image declarations,
-runtime state, and live code are preserved. Keep project-specific instructions
-outside generated/copied files and outside the host guide's managed block.
-Refreshing project files does not install a newer package or upgrade image tools.
+## Images
 
-\`plexus.json\` declares this project's images. A freshly initialized
-project declares none; register one before the first image start. With the
-pharo-agent plugin enabled, that is \`image_templates\` and then \`image_add\`,
-with no shell. Otherwise:
+\`plexus.json\` declares this workspace's images. With the plugin, use the
+\`image_*\` tools; otherwise:
 
 \`\`\`sh
 pharo-agent image templates
-pharo-agent image list
-pharo-agent image add dev --template '<launcher template name>'
+pharo-agent image add <id> --template '<template name>'
+pharo-agent image start <id>
 \`\`\`
 
-\`image templates\` names the templates the launcher offers, with the category
-of each; a name two categories offer also needs \`--category <name>\`. Any
-version the launcher offers can be registered, and one outside the MCP range
-starts without MCP tools or a source projection, saying so.
+The first image declared is the default, the main line. An image takes one
+writer, and making one takes seconds: add a new one for each new subject or
+parallel agent rather than share one, named like a branch
+(\`pretty-print-formatter\`, not \`p15\`). A running image may be another
+session's. Stop an image and remove its declaration when its subject is done.
 
-\`image add\` makes the first registered image the default. \`pharo-agent image
-use <id>\` changes the default, and \`pharo-agent image remove <id>\` drops a
-declaration. Stop an image before removing its declaration.
+## Tools
 
-Use \`pharo-agent image start\` before live-image work. On macOS with fuse-t
-installed the image's source is also projected under \`.pharo-agent/mounts\`
-and can be edited as files; everywhere else the Pharo tools are the way in,
-and \`image start\` says so.
-
-With the pharo-agent plugin enabled for this project, this is all MCP tools:
-declare an image with \`image_add\`, start it with \`image_start\`, and call the
-image's own tools by name. Without it,
-call a tool with \`pharo-agent pharo <tool> [arguments-json]\`, and
-\`pharo-agent mcp\` serves the same surface as a command-scoped stdio MCP
-server.
-
-\`pharo-agent pharo list\` names the tools the image advertises, which are the
-common ones rather than all of it. Find the rest through the catalogue rather
-than guessing at a name, then call one the same way as any other:
-
-\`\`\`sh
-pharo-agent pharo tool_search '{"query":"repository commit"}'
-pharo-agent pharo tool_get '{"name":"repository_commit"}'
-pharo-agent pharo repository_commit '{"name":"MCP","message":"..."}'
-\`\`\`
-
-Several images can run at once. \`pharo-agent image start <id>\` and
-\`pharo-agent image stop <id>\` name their image, \`pharo\` and \`mcp\` take
-\`--image <id>\`, and without either the default image answers.
-\`pharo-agent image list\` says which are running, and
-\`pharo-agent image stop --all\` stops every one this project started.
-
-Image, Tonel, Iceberg, disk Git, and host processes are separate states.
+With the plugin, an image's tools are MCP tools. Otherwise call one with
+\`pharo-agent pharo <tool> [arguments-json] [--image <id>]\`, or serve them
+with \`pharo-agent mcp\`. An image lists its common tools; \`tool_search\` and
+\`tool_get\` find the rest. On macOS with fuse-t, \`image start\` also mounts
+the source under \`.pharo-agent/mounts\`.
 
 ${pharoRouting()}
 `;

@@ -26,6 +26,13 @@ and `image_add`, which takes `id`, `template`, and `category` or `profile`
 when they are needed. Declaring an image is the one step that used to need a
 shell.
 
+## When to make another image
+
+An image takes one writer, so agents are told to make a new one, in seconds,
+for each new subject or parallel agent rather than share one, and to name it
+like a branch (`pretty-print-formatter`, not `p15`). The first image declared
+is the default, the main line.
+
 ## Managing declarations
 
 `image list` shows what the project declares, which is the default, and the
