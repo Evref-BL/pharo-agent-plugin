@@ -22,7 +22,7 @@ import {
   writeRunningImages,
 } from "./runtime.js";
 
-export const pifsRelease = "v0.10.2";
+export const pifsRelease = "v0.10.3";
 
 // fuse-t ships as a macOS installer package, so it lands in /usr/local
 // whatever Homebrew's prefix is. The unversioned symlink is what the daemon
