@@ -10,7 +10,7 @@ the host this chat runs in: `--host claude` in Claude Code, `--host codex` in
 Codex, `--host opencode` in OpenCode.
 
 ```sh
-npx --yes @evref-bl/pharo-agent@0.15.0 init --host claude
+npx --yes @evref-bl/pharo-agent@0.16.0 init --host claude
 ```
 
 It writes the project's Pharo guide, skills and references, and a block in the
