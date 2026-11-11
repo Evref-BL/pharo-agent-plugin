@@ -1,9 +1,11 @@
 # pharo-agent contributor guide
 
 `pharo-agent` is a terminal-first integration for Pharo projects. It installs
-only a selected agent host's conditional instruction shim. `init` must not
-write an MCP server into a host's configuration; the plugin declares one of its
-own, which a host starts only where the plugin is enabled.
+only a selected agent host's conditional instruction shim. Where a host has a
+plugin manifest, the plugin declares the MCP server, which the host starts only
+where the plugin is enabled, and `init` writes none. A host without one
+(OpenCode) gets the `pharo` entry in its project configuration, which it reads
+for that project only, and nothing else of that file changes.
 
 ## Boundaries
 

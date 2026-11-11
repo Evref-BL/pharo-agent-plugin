@@ -273,3 +273,75 @@ test("init refuses to initialize inside an enclosing PLexus project", () => {
     fs.rmSync(root, { recursive: true, force: true });
   }
 });
+
+const { version } = JSON.parse(fs.readFileSync(new URL("../package.json", import.meta.url), "utf8"));
+const pharoServer = {
+  type: "local",
+  command: ["npx", "--yes", `@evref-bl/pharo-agent@${version}`, "mcp"],
+  enabled: true,
+  codemode: false,
+};
+
+test("init registers the pharo MCP server in OpenCode's project configuration", () => {
+  const root = temporaryProject();
+  try {
+    const result = initialize({ host: "opencode", cwd: root });
+    const config = JSON.parse(fs.readFileSync(path.join(root, "opencode.json"), "utf8"));
+    assert.equal(result.serverConfig, "opencode.json");
+    assert.equal(config.$schema, "https://opencode.ai/config.json");
+    assert.deepEqual(config.mcp.pharo, pharoServer);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("init keeps everything else in an existing opencode.json", () => {
+  const root = temporaryProject();
+  try {
+    const other = { type: "remote", url: "http://127.0.0.1:9", enabled: true };
+    fs.writeFileSync(path.join(root, "opencode.json"), JSON.stringify({
+      model: "ollama/some-model", mcp: { other, pharo: { type: "remote", url: "http://stale" } },
+    }));
+    initialize({ host: "opencode", cwd: root });
+    const config = JSON.parse(fs.readFileSync(path.join(root, "opencode.json"), "utf8"));
+    assert.equal(config.model, "ollama/some-model");
+    assert.deepEqual(config.mcp.other, other);
+    assert.deepEqual(config.mcp.pharo, pharoServer);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+for (const [name, file, content] of [
+  ["an opencode.jsonc", "opencode.jsonc", '{\n  // the user\'s comment\n  "model": "x"\n}\n'],
+  ["an opencode.json that is not plain JSON", "opencode.json", '{\n  // the user\'s comment\n  "model": "x"\n}\n'],
+]) {
+  test(`init refuses ${name} before writing anything, and says what to add`, () => {
+    const root = temporaryProject();
+    try {
+      fs.writeFileSync(path.join(root, file), content);
+      assert.throws(
+        () => initialize({ host: "opencode", cwd: root }),
+        new RegExp(`by hand[\\s\\S]*@evref-bl/pharo-agent@${version.replaceAll(".", "\\.")}`),
+      );
+      assert.equal(fs.readFileSync(path.join(root, file), "utf8"), content);
+      assert.equal(fs.existsSync(path.join(root, ".pharo-agent")), false);
+      assert.equal(fs.existsSync(path.join(root, "pharo.AGENTS.md")), false);
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
+}
+
+for (const host of supportedHosts.filter((each) => !each.serverConfig)) {
+  test(`init writes no MCP server configuration for ${host.name}, whose plugin declares it`, () => {
+    const root = temporaryProject();
+    try {
+      const result = initialize({ host: host.id, cwd: root });
+      assert.equal(result.serverConfig, undefined);
+      assert.equal(fs.existsSync(path.join(root, "opencode.json")), false);
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
+}

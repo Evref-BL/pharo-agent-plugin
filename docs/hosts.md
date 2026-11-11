@@ -18,6 +18,8 @@ pharo-agent init --host <claude|codex|opencode>
   nothing else belongs in it.
 - `.pharo-agent/references` and `.pharo-agent/skills`, the workflow guidance
   the guide points at, copied from the pinned MCP template package.
+- for OpenCode only, the `pharo` entry under `mcp` in the project's
+  `opencode.json`, keeping the rest of that file. See below.
 - `plexus.json`, if the directory has none.
 
 `init` acts on the current directory and never searches above it. It refuses to
@@ -96,8 +98,14 @@ once you turn that on, under **Marketplaces** in `/plugin`. Otherwise run
 `/plugin marketplace update evref-bl` first, or Claude Code compares against
 the catalog it fetched when you installed and reports that you are up to date.
 
-OpenCode has no plugin manifest here; it uses the same CLI with
-`--host opencode`.
+OpenCode has no plugin manifest here, so `init --host opencode` declares the
+server itself, in the project's `opencode.json`, which OpenCode reads for that
+project only. The entry runs `npx --yes @evref-bl/pharo-agent@<version> mcp`,
+pinned to the release that ran `init`, and sets `"codemode": false`: OpenCode 2
+otherwise hides an MCP server's tools inside its `execute` tool, where a model
+has to search for them. A project configured with `opencode.jsonc`, or an
+`opencode.json` that is not plain JSON, is refused rather than rewritten
+without its comments, and the error gives the entry to add by hand.
 
 ## The first chat
 

@@ -4,7 +4,9 @@
 export const supportedHosts = [
   { id: "claude", name: "Claude Code", guide: "CLAUDE.md", plugin: true },
   { id: "codex", name: "Codex", guide: "AGENTS.md", plugin: true },
-  { id: "opencode", name: "OpenCode", guide: "AGENTS.md", plugin: false },
+  // No plugin manifest to declare the MCP server in: init writes it into the
+  // project's own configuration, which OpenCode reads for that project only.
+  { id: "opencode", name: "OpenCode", guide: "AGENTS.md", plugin: false, serverConfig: "opencode.json" },
 ];
 
 export const hostIds = supportedHosts.map((host) => host.id);
