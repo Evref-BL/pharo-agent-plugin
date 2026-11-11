@@ -1,0 +1,33 @@
+{
+  "type": "object",
+  "properties": {
+    "classes": {
+      "items": {
+        "type": "string"
+      },
+      "description": "Run these test classes.",
+      "type": "array"
+    },
+    "packages": {
+      "items": {
+        "type": "string"
+      },
+      "description": "Run every test class in these packages.",
+      "type": "array"
+    },
+    "timeoutSeconds": {
+      "default": 90,
+      "description": "Give up after this many seconds and report what ran by then. 0 answers at once.",
+      "type": "integer",
+      "minimum": 0
+    },
+    "methods": {
+      "items": {
+        "type": "string"
+      },
+      "description": "Run these test methods, as Class>>#selector.",
+      "type": "array"
+    }
+  },
+  "additionalProperties": false
+}

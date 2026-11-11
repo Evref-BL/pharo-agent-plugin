@@ -2,6 +2,7 @@ import { declareProjectImage, removeProjectImage } from "@evref-bl/plexus";
 import { configuredImages } from "./project.js";
 import {
   defaultImageId,
+  notConfigured,
   readConfig,
   readRunningImages,
   recordedImageIsRunning,
@@ -93,7 +94,7 @@ export function addImage(projectRoot, request) {
 
 export function useImage(projectRoot, id) {
   if (!configuredImages(projectRoot).some((image) => image.id === id)) {
-    throw new Error(`Image ${id} is not configured.`);
+    throw notConfigured(projectRoot, id);
   }
   writeConfig(projectRoot, { ...readConfig(projectRoot), defaultImage: id });
   return { defaultImage: id };
@@ -101,7 +102,7 @@ export function useImage(projectRoot, id) {
 
 export function removeImage(projectRoot, id) {
   if (!configuredImages(projectRoot).some((image) => image.id === id)) {
-    throw new Error(`Image ${id} is not configured.`);
+    throw notConfigured(projectRoot, id);
   }
   assertNotRunning(projectRoot, id, "removing it");
   removeProjectImage(projectRoot, id);

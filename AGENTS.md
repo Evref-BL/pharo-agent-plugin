@@ -21,7 +21,8 @@ for that project only, and nothing else of that file changes.
 ## Interface
 
 - Keep ordinary commands argument-light: `init --host`, `image start`,
-  `image list`, `image stop`, and `pharo <tool> [arguments-json]`.
+  `image list`, `image stop`, and `<tool>` with its arguments as flags read
+  from the tool's schema.
 - Images are addressed by id, in PLexus's vocabulary: `start`, `stop`, `list`,
   never `open`, `close` or `status`. An image is a host process this project
   starts and stops; nothing here keeps a project-wide lifecycle state.

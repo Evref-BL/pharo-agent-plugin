@@ -1,0 +1,32 @@
+Tool test_run found.
+tool:
+  annotations: {}
+  description: Run tests and return a compact summary with the failures and errors. Name test packages, test classes or individual test methods; at least one of the three is required.
+  exposure: static
+  group: tests
+  inputSchema:
+    additionalProperties: false
+    properties:
+      classes:
+        description: Run these test classes.
+        items:
+          type: string
+        type: array
+      methods:
+        description: Run these test methods, as Class>>#selector.
+        items:
+          type: string
+        type: array
+      packages:
+        description: Run every test class in these packages.
+        items:
+          type: string
+        type: array
+      timeoutSeconds:
+        default: 90
+        description: Give up after this many seconds and report what ran by then. 0 answers at once.
+        minimum: 0
+        type: integer
+    type: object
+  keywords: [sunit, test, timeout, run, tests]
+  name: test_run

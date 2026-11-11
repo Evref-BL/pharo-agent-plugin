@@ -60,8 +60,8 @@ test("help is answered wherever the word lands without initializing a project", 
       [["image", "start", "--help"], /Others keep running/],
       [["image", "stop", "--help"], /--all of them/],
       [["mcp", "--help"], /stdio MCP server/],
-      [["pharo", "--help"], /JSON object of arguments, \{\} by default/],
-      [["pharo", "list", "--help"], /advertised tools/],
+      [["list", "--help"], /advertised tools, one line each/],
+      [["--help"], /pharo-agent <tool> \[<value>\] \[--<argument> <value>\]/],
     ];
     for (const [args, expected] of cases) {
       const result = spawnSync(process.execPath, [binary, ...args], { cwd: root, encoding: "utf8" });
@@ -106,4 +106,37 @@ test("the executable reports what main answers", () => {
 
   assert.equal(spawnSync(process.execPath, [binary, "--help"]).status, 0);
   assert.equal(spawnSync(process.execPath, [binary, "nonsense"]).status, 1);
+});
+
+function declare(root, images) {
+  fs.writeFileSync(path.join(root, "plexus.json"), `${JSON.stringify({
+    id: "probe",
+    name: "probe",
+    images: images.map((id) => ({
+      id,
+      imageName: `{workspaceId}-${id}`,
+      mcp: { loadScript: "pharo/load-mcp.st" },
+      create: { kind: "template", templateName: "Pharo 14.0 - 64bit (next stable)" },
+    })),
+  })}\n`);
+}
+
+test("a snake_case word is a tool call, and pharo is no command", async () => {
+  await inProject(async (root) => {
+    declare(root, []);
+    await assert.rejects(() => main(["class_get", "Point"]), /No image is configured/);
+    await assert.rejects(() => main(["pharo", "class_get", "{}"]), /Unsupported command: pharo/);
+  });
+});
+
+test("an image that is not declared is answered with the ones that are", async () => {
+  await inProject(async (root) => {
+    declare(root, ["eval", "spare"]);
+    fs.mkdirSync(path.join(root, ".pharo-agent"), { recursive: true });
+    fs.writeFileSync(path.join(root, ".pharo-agent", "config.json"), `${JSON.stringify({ defaultImage: "eval" })}\n`);
+    await assert.rejects(
+      () => main(["tool_search", "--image", "default"]),
+      /Image default is not configured\. This project declares eval \(the default\), spare\./,
+    );
+  });
 });

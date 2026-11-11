@@ -1,0 +1,72 @@
+{
+  "type": "object",
+  "properties": {
+    "scope": {
+      "additionalProperties": false,
+      "properties": {
+        "subclassesOf": {
+          "items": {
+            "type": "string"
+          },
+          "description": "Every descendant of these classes, the classes themselves excluded.",
+          "type": "array"
+        },
+        "packages": {
+          "items": {
+            "type": "string"
+          },
+          "description": "Every class in these packages.",
+          "type": "array"
+        },
+        "hierarchyOf": {
+          "items": {
+            "type": "string"
+          },
+          "description": "Whole hierarchies of these classes, superclasses and subclasses alike, the classes themselves included.",
+          "type": "array"
+        },
+        "superclassesOf": {
+          "items": {
+            "type": "string"
+          },
+          "description": "Every ancestor of these classes, the classes themselves excluded.",
+          "type": "array"
+        },
+        "classes": {
+          "items": {
+            "type": "string"
+          },
+          "description": "These classes.",
+          "type": "array"
+        },
+        "side": {
+          "default": "both",
+          "description": "Which sides of the selected classes to sweep.",
+          "type": "string",
+          "enum": [
+            "instance",
+            "class",
+            "both"
+          ]
+        }
+      },
+      "description": "What to narrow the sweep to. Give several entries and everything any of them selects is covered. Omitted, the whole image is swept.",
+      "type": "object"
+    },
+    "protocol": {
+      "description": "Keep methods whose protocol contains this text. Case matters.",
+      "type": "string"
+    },
+    "offset": {
+      "default": 0,
+      "description": "Index of the first result to return. A page is a fixed size, which tool_get reports for this tool; a result that was cut short says how many more there are.",
+      "type": "integer",
+      "minimum": 0
+    },
+    "selector": {
+      "description": "Keep methods whose selector contains this text. Case matters, as it does in a selector.",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false
+}

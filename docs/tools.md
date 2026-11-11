@@ -4,41 +4,47 @@ The commands the project's Pharo guidance hands to the agent, written out here
 for a human reading along.
 
 ```sh
-pharo-agent pharo list
-pharo-agent pharo <tool> [arguments-json]
+pharo-agent list
+pharo-agent <tool> [<value>] [--<argument> <value>]...
 ```
 
 ## The advertised surface is not the whole catalogue
 
-`pharo list` names the tools the image advertises: the common ones, covering
-classes, methods, tests and evaluation. The image holds many more — packages,
-repositories, change history, debuggers, screen reading — and keeps them out of
-that list so their schemas stay out of an agent's context.
+`list` names the tools the image advertises, one line each: the common ones,
+covering classes, methods, tests and evaluation. The image holds many more —
+packages, repositories, change history, debuggers, screen reading — and keeps
+them out of that list so their schemas stay out of an agent's context.
 
 Find them through the catalogue:
 
 ```sh
-pharo-agent pharo tool_search '{"query":"repository commit"}'
-pharo-agent pharo tool_get '{"name":"repository_commit"}'
+pharo-agent tool_search repository commit
+pharo-agent repository_commit --help
 ```
 
 `tool_search` ranks the catalogue by keyword and answers the closest tools even
-when none matches every word. `tool_get` returns one tool's input schema. Read
-the schema before calling anything less common.
+when none matches every word. A tool's `--help` lists its arguments, read from
+its schema.
 
 ## Calling one
 
 ```sh
-pharo-agent pharo class_search '{"name":"Point"}'
-pharo-agent pharo package_search '{"name":"MCP"}'
+pharo-agent class_get Point
+pharo-agent test_run --classes PointTest --classes RectangleTest
+pharo-agent method_compile --class Point --protocol accessing --source - <<'EOF'
+x
+	^ x
+EOF
 ```
 
-Every tool the image holds is called the same way, whether or not `pharo list`
-names it. `tool_call` is there for a client that will only send a name from
-its own list; a terminal is not one.
+A tool's arguments are its flags: repeated for a list, alone for true
+(`--no-<flag>` for false), JSON for one that is itself an object. A bare value
+fills the tool's one required argument, or its only one. A value of `-` is read
+from standard input, so code needs no quoting. Every tool the image holds is
+called the same way, whether or not `list` names it.
 
-A tool that fails prints its error and exits nonzero, so a script may test the
-status rather than read the JSON.
+The answer is the text the tool wrote. `--json` prints the MCP result instead,
+for a script; a tool that fails exits nonzero either way.
 
 ## As an MCP server
 

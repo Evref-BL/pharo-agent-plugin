@@ -1,6 +1,7 @@
 import { createRequire } from "node:module";
 import { PlexusGateway } from "@evref-bl/plexus/gateway";
 import { loadProjectState } from "@evref-bl/plexus";
+import { toolContractFrom } from "./mcpYaml.js";
 import {
   selectRunningImage,
   unappliedPharoMcpPin,
@@ -63,6 +64,38 @@ export async function callImageTool(projectRoot, running, toolName, argumentsVal
 export async function listImageTools(projectRoot, running) {
   const { gateway } = imageGateway(projectRoot, running);
   return gateway.refreshPharoTools();
+}
+
+// PLexus adds its routing handle to every schema it lists; a caller never
+// passes it, so the CLI neither offers nor describes it.
+function withoutRouting(tool) {
+  const { required: listed = [], ...schema } = tool.inputSchema ?? {};
+  const properties = { ...(schema.properties ?? {}) };
+  delete properties.mcpServerId;
+  const required = listed.filter((name) => name !== "mcpServerId");
+  return { ...tool, inputSchema: { ...schema, properties, ...(required.length ? { required } : {}) } };
+}
+
+export async function listAdvertisedTools(projectRoot, running) {
+  return (await listImageTools(projectRoot, running)).map(withoutRouting);
+}
+
+/**
+ * A tool's contract: from the advertised list when it is there, otherwise
+ * from tool_get, which reaches the rest of the catalogue.
+ */
+export async function toolContract(projectRoot, running, toolName) {
+  const advertised = (await listAdvertisedTools(projectRoot, running)).find((tool) => tool.name === toolName);
+  if (advertised) return advertised;
+  const answer = /** @type {{ isError?: boolean, content?: { text?: string }[] }} */ (
+    await callImageTool(projectRoot, running, "tool_get", { name: toolName })
+  );
+  const contract = answer?.isError ? undefined
+    : toolContractFrom((answer?.content ?? []).map((part) => part.text ?? "").join("\n"));
+  if (!contract) {
+    throw new Error(`Image ${running.imageId} has no tool ${toolName}. pharo-agent tool_search <words> finds one.`);
+  }
+  return withoutRouting(contract);
 }
 
 export function withImageSelector(tool, defaultImage) {

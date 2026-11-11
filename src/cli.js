@@ -2,11 +2,18 @@ import { hostChoices, hostList } from "./hosts.js";
 import { usage } from "./help.js";
 import { initialize } from "./init.js";
 import { addImage, listImages, removeImage, useImage } from "./images.js";
-import { callImageTool, listImageTools } from "./gateway.js";
+import { callImageTool, listAdvertisedTools, toolContract } from "./gateway.js";
 import { serveImagesMcp } from "./mcpServer.js";
 import { listImageTemplates, startAgentImage, stopAgentImage } from "./live.js";
 import { findProjectRoot } from "./project.js";
 import { readRunningImage } from "./runtime.js";
+import {
+  isToolName,
+  resultText,
+  toolArguments,
+  toolListing,
+  toolUsage,
+} from "./toolCommand.js";
 
 function parseInit(args) {
   let host;
@@ -97,20 +104,6 @@ function requireNoArguments(command, args) {
   }
 }
 
-function parseToolArguments(value) {
-  if (value === undefined) return {};
-  let parsed;
-  try {
-    parsed = JSON.parse(value);
-  } catch {
-    throw new Error("Tool arguments must be a JSON object.");
-  }
-  if (!parsed || Array.isArray(parsed) || typeof parsed !== "object") {
-    throw new Error("Tool arguments must be a JSON object.");
-  }
-  return parsed;
-}
-
 // A tool the image answered with an error is still an answer: the MCP result
 // carries the Pharo exception, and a caller wants to read it. Print it as
 // always, and report the failure in the exit status too, so `set -e` and
@@ -119,8 +112,46 @@ export function exitCodeForToolResult(result) {
   return result?.isError === true ? 1 : 0;
 }
 
+function takeFlag(args, flag) {
+  return { present: args.includes(flag), rest: args.filter((value) => value !== flag) };
+}
+
+// `pharo-agent <tool> ...`: the answer's text for a reader, or the MCP result
+// with --json. Its schema is fetched only when the words need reading.
+async function runTool([toolName, ...words]) {
+  const { image, rest: withoutImage } = takeImageOption(words);
+  const json = takeFlag(withoutImage, "--json");
+  const help = takeFlag(json.rest, "--help");
+  const projectRoot = findProjectRoot();
+  const running = readRunningImage(projectRoot, image);
+  if (help.present) {
+    console.log(toolUsage(await toolContract(projectRoot, running, toolName)));
+    return 0;
+  }
+  const argumentsValue = help.rest.length === 0 ? {}
+    : toolArguments(toolName, help.rest, (await toolContract(projectRoot, running, toolName)).inputSchema);
+  const result = await callImageTool(projectRoot, running, toolName, argumentsValue);
+  console.log(json.present ? JSON.stringify(result, null, 2) : resultText(result));
+  return exitCodeForToolResult(result);
+}
+
+async function listTools(words) {
+  const { image, rest: withoutImage } = takeImageOption(words);
+  const json = takeFlag(withoutImage, "--json");
+  requireNoArguments("list", json.rest);
+  const projectRoot = findProjectRoot();
+  const tools = await listAdvertisedTools(projectRoot, readRunningImage(projectRoot, image));
+  console.log(json.present ? JSON.stringify(tools, null, 2) : toolListing(tools));
+}
+
 export async function main(args) {
   const [command, ...rest] = args;
+  // A snake_case word is an image tool; its own --help reads the tool's
+  // schema, and the word help is a value it may take, not a request for
+  // the CLI's usage.
+  if (command && isToolName(command)) {
+    return runTool(args);
+  }
   // A caller reaching for help is asking the same question wherever the word
   // lands, and `image add --help` answering that it needs an image id is no
   // answer at all.
@@ -141,6 +172,10 @@ export async function main(args) {
     const { image: mcpImage, rest: mcpArgs } = takeImageOption(rest);
     requireNoArguments(command, mcpArgs);
     await serveImagesMcp(findProjectRoot, mcpImage);
+    return;
+  }
+  if (command === "list") {
+    await listTools(rest);
     return;
   }
   const projectRoot = findProjectRoot();
@@ -192,30 +227,6 @@ export async function main(args) {
       return;
     }
     throw new Error(`Unsupported image command: ${subcommand ?? ""}\n${usage()}`);
-  }
-  const { image, rest: commandArgs } = takeImageOption(rest);
-  if (command === "pharo") {
-    const [toolName, argumentsJson, ...extra] = commandArgs;
-    if (toolName === "list") {
-      if (argumentsJson || extra.length > 0) throw new Error("pharo list does not accept arguments");
-      console.log(JSON.stringify(
-        await listImageTools(projectRoot, readRunningImage(projectRoot, image)),
-        null,
-        2,
-      ));
-      return;
-    }
-    if (!toolName || extra.length > 0) {
-      throw new Error("pharo requires one tool name and an optional JSON object");
-    }
-    const result = await callImageTool(
-      projectRoot,
-      readRunningImage(projectRoot, image),
-      toolName,
-      parseToolArguments(argumentsJson),
-    );
-    console.log(JSON.stringify(result, null, 2));
-    return exitCodeForToolResult(result);
   }
   throw new Error(`Unsupported command: ${command}\n${usage()}`);
 }

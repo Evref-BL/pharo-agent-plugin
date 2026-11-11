@@ -1,0 +1,34 @@
+Tool method_compile found.
+tool:
+  annotations: {}
+  description: Compile method source into a class. Creates the method when absent and replaces it when the selector already exists. Several sources can be compiled into the same class in one call.
+  exposure: static
+  group: methods
+  inputSchema:
+    additionalProperties: false
+    properties:
+      class:
+        description: The class to compile the method into.
+        type: string
+      force:
+        default: false
+        description: Continue through refactoring warnings instead of stopping, and compile over a method the class got from a trait, overriding it in this class.
+        type: boolean
+      protocol:
+        description: The protocol to file the method under. Omitted, a method being replaced keeps the protocol it is in, and a new one is left unclassified, which the answer warns about. For an extension method, name an extension protocol such as *Package-Name.
+        type: string
+      side:
+        default: instance
+        description: Which side to compile into.
+        enum: [instance, class]
+        type: string
+      source:
+        description: The full method source to compile, selector line included, or several method sources for the same class.
+        items:
+          description: The full source of one method.
+          type: string
+        type: [string, array]
+    required: [class, source]
+    type: object
+  keywords: [method, compile, refactoring, methods, refactor]
+  name: method_compile

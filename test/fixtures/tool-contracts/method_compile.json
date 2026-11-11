@@ -1,0 +1,43 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "source": {
+      "items": {
+        "description": "The full source of one method.",
+        "type": "string"
+      },
+      "description": "The full method source to compile, selector line included, or several method sources for the same class.",
+      "type": [
+        "string",
+        "array"
+      ]
+    },
+    "class": {
+      "description": "The class to compile the method into.",
+      "type": "string"
+    },
+    "force": {
+      "type": "boolean",
+      "description": "Continue through refactoring warnings instead of stopping, and compile over a method the class got from a trait, overriding it in this class.",
+      "default": false
+    },
+    "protocol": {
+      "description": "The protocol to file the method under. Omitted, a method being replaced keeps the protocol it is in, and a new one is left unclassified, which the answer warns about. For an extension method, name an extension protocol such as *Package-Name.",
+      "type": "string"
+    },
+    "side": {
+      "default": "instance",
+      "description": "Which side to compile into.",
+      "type": "string",
+      "enum": [
+        "instance",
+        "class"
+      ]
+    }
+  },
+  "type": "object",
+  "required": [
+    "class",
+    "source"
+  ]
+}
