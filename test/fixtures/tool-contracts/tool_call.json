@@ -1,0 +1,19 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Tool name to invoke.",
+      "minLength": 1
+    },
+    "arguments": {
+      "type": "object",
+      "description": "Arguments passed to the selected tool.",
+      "additionalProperties": true
+    }
+  },
+  "type": "object",
+  "required": [
+    "name"
+  ]
+}

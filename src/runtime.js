@@ -81,10 +81,26 @@ export function defaultImageId(projectRoot) {
   );
 }
 
+/** The error for an image id this project does not declare, naming the ones it does. */
+export function notConfigured(projectRoot, imageId) {
+  const ids = configuredImages(projectRoot).map((image) => image.id);
+  if (ids.length === 0) {
+    return new Error(`Image ${imageId} is not configured, and no image is yet. Declare one with pharo-agent image add.`);
+  }
+  let defaultId;
+  try {
+    defaultId = defaultImageId(projectRoot);
+  } catch {
+    defaultId = undefined;
+  }
+  const named = ids.map((id) => (id === defaultId ? `${id} (the default)` : id)).join(", ");
+  return new Error(`Image ${imageId} is not configured. This project declares ${named}.`);
+}
+
 export function resolveImageId(projectRoot, imageId) {
   if (imageId === undefined) return defaultImageId(projectRoot);
   if (!configuredImages(projectRoot).some((image) => image.id === imageId)) {
-    throw new Error(`Image ${imageId} is not configured.`);
+    throw notConfigured(projectRoot, imageId);
   }
   return imageId;
 }

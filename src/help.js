@@ -44,26 +44,26 @@ const commands = {
     description: "Stop an image and its source mount, the default one without an id, or --all of them.",
     example: "image stop dev",
   },
+  list: {
+    usage: "list [--image <id>] [--json]",
+    description: "List a running image's advertised tools, one line each. tool_search finds the rest.",
+    example: "list",
+  },
+  "<tool>": {
+    usage: "<tool> [<value>] [--<argument> <value>]... [--image <id>] [--json]",
+    description: "Call an image tool. Its arguments are flags, - reads a value from stdin, and\n"
+      + "<tool> --help lists them. Prints the answer's text, or the MCP result with --json.",
+    example: "class_get Point",
+  },
   mcp: {
     usage: "mcp [--image <id>]",
     description: "Serve this project's images as a stdio MCP server, as the plugin does for a host.",
     example: "mcp --image dev",
   },
-  "pharo list": {
-    usage: "pharo list [--image <id>]",
-    description: "List a running image's advertised tools. tool_search and tool_get find the rest.",
-    example: "pharo list",
-  },
-  pharo: {
-    usage: "pharo <tool> [arguments-json] [--image <id>]",
-    description: "Call a tool in a running image with a JSON object of arguments, {} by default.\n"
-      + "Read its schema with tool_get first.",
-    example: 'pharo tool_get \'{"name":"class_search"}\'',
-  },
 };
 
 export function usage(args = []) {
-  const key = ["image", "pharo"].includes(args[0]) && args[1]
+  const key = args[0] === "image" && args[1]
     ? `${args[0]} ${args[1]}`
     : args[0];
   const command = Object.hasOwn(commands, key) ? commands[key]

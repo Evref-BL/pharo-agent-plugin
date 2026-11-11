@@ -1,0 +1,60 @@
+Tool method_search found.
+tool:
+  annotations:
+    readOnlyHint: true
+  description: Search methods by selector, protocol, class, package, or scope. Use method_source_search for source text and method_reference_search for where a name is used.
+  exposure: static
+  group: methods
+  inputSchema:
+    additionalProperties: false
+    properties:
+      offset:
+        default: 0
+        description: Index of the first result to return. A page is a fixed size, which tool_get reports for this tool; a result that was cut short says how many more there are.
+        minimum: 0
+        type: integer
+      protocol:
+        description: Keep methods whose protocol contains this text. Case matters.
+        type: string
+      scope:
+        additionalProperties: false
+        description: What to narrow the sweep to. Give several entries and everything any of them selects is covered. Omitted, the whole image is swept.
+        properties:
+          classes:
+            description: These classes.
+            items:
+              type: string
+            type: array
+          hierarchyOf:
+            description: Whole hierarchies of these classes, superclasses and subclasses alike, the classes themselves included.
+            items:
+              type: string
+            type: array
+          packages:
+            description: Every class in these packages.
+            items:
+              type: string
+            type: array
+          side:
+            default: both
+            description: Which sides of the selected classes to sweep.
+            enum: [instance, class, both]
+            type: string
+          subclassesOf:
+            description: Every descendant of these classes, the classes themselves excluded.
+            items:
+              type: string
+            type: array
+          superclassesOf:
+            description: Every ancestor of these classes, the classes themselves excluded.
+            items:
+              type: string
+            type: array
+        type: object
+      selector:
+        description: Keep methods whose selector contains this text. Case matters, as it does in a selector.
+        type: string
+    type: object
+  keywords: [method, metadata, search, methods]
+  name: method_search
+  pageSize: 25
