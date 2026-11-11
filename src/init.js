@@ -1,7 +1,8 @@
 import fs from "node:fs";
 import path from "node:path";
 import { templateDirectory as mcpTemplateDirectory } from "@evref-bl/pharo-mcp";
-import { guideForHost, hostList } from "./hosts.js";
+import { version } from "./gateway.js";
+import { hostList, hostNamed } from "./hosts.js";
 import {
   createProjectConfig,
   enclosingProjectRoot,
@@ -67,6 +68,47 @@ function assertGeneratedGuideCanBeUpdated(filePath) {
   }
 }
 
+// Pinned to the release that wrote the guide, as the setup skill pins its
+// npx command: a host that has no plugin has no pharo-agent on its PATH
+// either. Code mode off, because OpenCode would otherwise hide the tools
+// inside its own execute tool.
+function serverEntry() {
+  return {
+    type: "local",
+    command: ["npx", "--yes", `@evref-bl/pharo-agent@${version}`, "mcp"],
+    enabled: true,
+    codemode: false,
+  };
+}
+
+// Only mcp.pharo is ours. A configuration that may hold comments is not
+// rewritten, since parsing and writing it back would drop them.
+function readServerConfig(projectRoot, fileName) {
+  const filePath = path.join(projectRoot, fileName);
+  const byHand = `add this under "mcp" by hand:\n"pharo": ${JSON.stringify(serverEntry(), null, 2)}`;
+  if (!fs.existsSync(filePath)) {
+    if (fs.existsSync(`${filePath}c`)) {
+      throw new Error(`${filePath}c may hold comments that rewriting it would drop; ${byHand}`);
+    }
+    return { filePath, config: { $schema: "https://opencode.ai/config.json" } };
+  }
+  let config;
+  try {
+    config = JSON.parse(fs.readFileSync(filePath, "utf8"));
+  } catch {
+    throw new Error(`${filePath} is not plain JSON, so rewriting it would lose what it holds; ${byHand}`);
+  }
+  if (config === null || typeof config !== "object" || Array.isArray(config)) {
+    throw new Error(`${filePath} is not a JSON object; ${byHand}`);
+  }
+  return { filePath, config };
+}
+
+function writeServerConfig({ filePath, config }) {
+  const mcp = config.mcp !== null && typeof config.mcp === "object" ? config.mcp : {};
+  fs.writeFileSync(filePath, `${JSON.stringify({ ...config, mcp: { ...mcp, pharo: serverEntry() } }, null, 2)}\n`);
+}
+
 function guidance() {
   return `# Pharo work\n\nWhen the task uses Pharo, read \`pharo.AGENTS.md\` before acting.\n`;
 }
@@ -116,8 +158,8 @@ elsewhere.
 
 ## Images
 
-\`plexus.json\` declares this workspace's images. With the plugin, use the
-\`image_*\` tools; otherwise:
+\`plexus.json\` declares this workspace's images. With the \`pharo\` MCP server,
+use the \`image_*\` tools; otherwise:
 
 \`\`\`sh
 pharo-agent image templates
@@ -133,10 +175,10 @@ session's. Stop an image and remove its declaration when its subject is done.
 
 ## Tools
 
-With the plugin, an image's tools are MCP tools. Otherwise call one with
-\`pharo-agent pharo <tool> [arguments-json] [--image <id>]\`, or serve them
-with \`pharo-agent mcp\`. An image lists its common tools; \`tool_search\` and
-\`tool_get\` find the rest. On macOS with fuse-t, \`image start\` also mounts
+With the \`pharo\` MCP server, an image's tools are MCP tools. Otherwise call
+one with \`pharo-agent pharo <tool> [arguments-json] [--image <id>]\`, or serve
+them with \`pharo-agent mcp\`. An image lists its common tools; \`tool_search\`
+and \`tool_get\` find the rest. On macOS with fuse-t, \`image start\` also mounts
 the source under \`.pharo-agent/mounts\`.
 
 ${pharoRouting()}
@@ -162,10 +204,11 @@ function resolveInitProjectRoot(cwd) {
 
 /** @param {{ host: string, mountRoot?: string, cwd?: string }} options */
 export function initialize({ host, mountRoot, cwd = process.cwd() }) {
-  const guideName = guideForHost(host);
-  if (!guideName) {
+  const hostEntry = hostNamed(host);
+  if (!hostEntry) {
     throw new Error(`--host must be ${hostList()}`);
   }
+  const guideName = hostEntry.guide;
 
   const { projectRoot, createdProjectConfig } = resolveInitProjectRoot(cwd);
   const directory = pluginDirectory(projectRoot);
@@ -173,6 +216,7 @@ export function initialize({ host, mountRoot, cwd = process.cwd() }) {
   const pharoGuidePath = path.join(projectRoot, "pharo.AGENTS.md");
   assertGeneratedGuideCanBeUpdated(pharoGuidePath);
   assertManagedBlockCanBeUpdated(path.join(projectRoot, guideName));
+  const serverConfig = hostEntry.serverConfig && readServerConfig(projectRoot, hostEntry.serverConfig);
   if (createdProjectConfig) {
     createProjectConfig(projectRoot);
   }
@@ -189,6 +233,7 @@ export function initialize({ host, mountRoot, cwd = process.cwd() }) {
   copyDirectory(path.join(templates, "pharo-references"), path.join(directory, "references"));
   copyDirectory(path.join(templates, "pharo-skills"), path.join(directory, "skills"));
   updateManagedBlock(path.join(projectRoot, guideName), guidance());
+  if (serverConfig) writeServerConfig(serverConfig);
 
-  return { projectRoot, guideName, createdProjectConfig };
+  return { projectRoot, guideName, createdProjectConfig, ...(serverConfig && { serverConfig: hostEntry.serverConfig }) };
 }
