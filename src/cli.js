@@ -118,16 +118,31 @@ function takeFlag(args, flag) {
 
 // `pharo-agent <tool> ...`: the answer's text for a reader, or the MCP result
 // with --json. Its schema is fetched only when the words need reading.
+// The MCP server's own tools manage images; from the shell they are the
+// image commands, which an agent that knows the server may not have read.
+const lifecycleTools = new Set(["image_templates", "image_add", "image_start", "image_list", "image_stop"]);
+
 async function runTool([toolName, ...words]) {
+  if (lifecycleTools.has(toolName)) {
+    throw new Error(`${toolName} is pharo-agent image ${toolName.slice("image_".length)} here.`);
+  }
   const { image, rest: withoutImage } = takeImageOption(words);
   const json = takeFlag(withoutImage, "--json");
   const help = takeFlag(json.rest, "--help");
-  const projectRoot = findProjectRoot();
-  const running = readRunningImage(projectRoot, image);
   if (help.present) {
-    console.log(toolUsage(await toolContract(projectRoot, running, toolName)));
+    // Help answers before a project or image exists; only the tool's own
+    // arguments need its image.
+    try {
+      const projectRoot = findProjectRoot();
+      console.log(toolUsage(await toolContract(projectRoot, readRunningImage(projectRoot, image), toolName)));
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      console.log(`${usage(["<tool>"])}\n\n${toolName}'s own arguments come from a running image: ${reason}`);
+    }
     return 0;
   }
+  const projectRoot = findProjectRoot();
+  const running = readRunningImage(projectRoot, image);
   const argumentsValue = help.rest.length === 0 ? {}
     : toolArguments(toolName, help.rest, (await toolContract(projectRoot, running, toolName)).inputSchema);
   const result = await callImageTool(projectRoot, running, toolName, argumentsValue);

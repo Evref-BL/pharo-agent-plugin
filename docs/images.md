@@ -43,8 +43,8 @@ image has to be stopped before its declaration goes.
 ## Several images at once
 
 `image start <id>` and `image stop <id>` name their image, the way
-`image use <id>` and `image remove <id>` do. `pharo` and `mcp` take
-`--image <id>`, which scopes a call rather than naming a subject. Without
+`image use <id>` and `image remove <id>` do. A tool command, `list` and `mcp`
+take `--image <id>`, which scopes a call rather than naming a subject. Without
 either, the default image answers, so a project with one image never names an
 image at all.
 

@@ -61,6 +61,7 @@ test("help is answered wherever the word lands without initializing a project", 
       [["image", "stop", "--help"], /--all of them/],
       [["mcp", "--help"], /stdio MCP server/],
       [["list", "--help"], /advertised tools, one line each/],
+      [["class_create", "--help"], /class_create's own arguments come from a running image/],
       [["--help"], /pharo-agent <tool> \[<value>\] \[--<argument> <value>\]/],
     ];
     for (const [args, expected] of cases) {
@@ -126,6 +127,7 @@ test("a snake_case word is a tool call, and pharo is no command", async () => {
     declare(root, []);
     await assert.rejects(() => main(["class_get", "Point"]), /No image is configured/);
     await assert.rejects(() => main(["pharo", "class_get", "{}"]), /Unsupported command: pharo/);
+    await assert.rejects(() => main(["image_start", "dev"]), /image_start is pharo-agent image start here/);
   });
 });
 
