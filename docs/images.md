@@ -73,6 +73,8 @@ the user has to approve, so `image start` checks before mounting:
 
 The image is running and fully usable; `mountPath` and `projectionPort` are
 absent from `image list`, and `image stop` has nothing extra to unmount.
+Setting `PHARO_AGENT_PROJECTION=off` in the environment starts every image this
+way, wherever it runs, and the warning names the variable.
 
 ## Pharo versions outside the MCP range
 
