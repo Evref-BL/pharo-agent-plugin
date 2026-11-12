@@ -79,7 +79,8 @@ covers both, and serving a different MCP from an image.
 **Source as files, on macOS.** Starting an image mounts its source below
 `.pharo-agent/mounts`. A file edited there is compiled into the live image:
 the files and the tools are two views of one image, not of an export and an
-image.
+image. Setting `PHARO_AGENT_PROJECTION=off` in the environment starts images
+without mounting anything.
 
 **Guidance for the agent.** Setting a project up writes a Pharo guide into it,
 and a conditional line in the host's own guide pointing at that guide for

@@ -515,20 +515,71 @@ test("a source projection is offered only where it can be mounted", () => {
   const withoutFuse = () => false;
 
   assert.deepEqual(
-    projectionAvailability({ platform: "darwin", exists: withFuse }),
+    projectionAvailability({ env: {}, platform: "darwin", exists: withFuse }),
     { available: true },
   );
 
-  const onLinux = projectionAvailability({ platform: "linux", exists: withFuse });
+  const onLinux = projectionAvailability({ env: {}, platform: "linux", exists: withFuse });
   assert.equal(onLinux.available, false);
   assert.ok(onLinux.reason);
   assert.match(onLinux.reason, /needs macOS and fuse-t/);
   assert.match(onLinux.reason, /linux/);
 
-  const noFuse = projectionAvailability({ platform: "darwin", exists: withoutFuse });
+  const noFuse = projectionAvailability({ env: {}, platform: "darwin", exists: withoutFuse });
   assert.equal(noFuse.available, false);
   assert.ok(noFuse.reason);
   assert.match(noFuse.reason, /brew install --cask fuse-t/);
+});
+
+// A machine that could mount may still be one that must not, such as a
+// developer's Mac running an eval harness's agents. The variable answers
+// before the platform is asked.
+test("PHARO_AGENT_PROJECTION=off turns the projection off where it could be mounted", () => {
+  let probed = false;
+  const off = projectionAvailability({
+    env: { PHARO_AGENT_PROJECTION: "off" },
+    platform: "darwin",
+    exists: () => {
+      probed = true;
+      return true;
+    },
+  });
+  assert.equal(off.available, false);
+  assert.ok(off.reason);
+  assert.match(off.reason, /PHARO_AGENT_PROJECTION=off/);
+  assert.equal(probed, false, "fuse-t was looked for anyway");
+
+  const offOnLinux = projectionAvailability({
+    env: { PHARO_AGENT_PROJECTION: "off" },
+    platform: "linux",
+    exists: () => true,
+  });
+  assert.equal(offOnLinux.reason, off.reason);
+});
+
+// An opt-out that ignored a value it does not take would mount on the very
+// machine that asked not to be mounted on.
+test("a PHARO_AGENT_PROJECTION other than off turns the projection off too, and says why", () => {
+  for (const value of ["0", "false", "OFF", "on"]) {
+    const answer = projectionAvailability({
+      env: { PHARO_AGENT_PROJECTION: value },
+      platform: "darwin",
+      exists: () => true,
+    });
+    assert.equal(answer.available, false, value);
+    assert.ok(answer.reason);
+    assert.match(answer.reason, /PHARO_AGENT_PROJECTION takes only off/);
+    assert.ok(answer.reason.includes(JSON.stringify(value)), answer.reason);
+  }
+});
+
+test("an unset or empty PHARO_AGENT_PROJECTION leaves the platform to decide", () => {
+  for (const env of [{}, { PHARO_AGENT_PROJECTION: "" }]) {
+    assert.deepEqual(
+      projectionAvailability({ env, platform: "darwin", exists: () => true }),
+      { available: true },
+    );
+  }
 });
 
 test("the fuse-t library is looked for where its installer puts it", () => {
@@ -537,7 +588,7 @@ test("the fuse-t library is looked for where its installer puts it", () => {
 });
 
 test("a missing projection says the image and its tools are still there", () => {
-  const unavailable = projectionAvailability({ platform: "linux", exists: () => false });
+  const unavailable = projectionAvailability({ env: {}, platform: "linux", exists: () => false });
   assert.ok(unavailable.reason);
   const warning = projectionUnavailableWarning("dev", unavailable.reason);
 

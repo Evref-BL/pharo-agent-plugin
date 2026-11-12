@@ -29,6 +29,9 @@ export const pifsRelease = "v0.10.3";
 // links against.
 export const fuseLibraryPath = "/usr/local/lib/libfuse-t.dylib";
 
+// Set to `off`, no image mounts a source projection, wherever it runs.
+const projectionVariable = "PHARO_AGENT_PROJECTION";
+
 /**
  * Whether a source projection can be mounted here.
  *
@@ -39,11 +42,34 @@ export const fuseLibraryPath = "/usr/local/lib/libfuse-t.dylib";
  * without fuse-t. The image and its tools were never the part that could not
  * work.
  *
- * @param {{ platform?: string, exists?: (path: string) => boolean }} [host]
+ * A machine that could mount may still be one that must not, so the
+ * environment can turn projections off before the platform is asked.
+ *
+ * @param {{
+ *   env?: Record<string, string | undefined>,
+ *   platform?: string,
+ *   exists?: (path: string) => boolean,
+ * }} [host]
  */
 export function projectionAvailability(host = {}) {
+  const setting = (host.env ?? process.env)[projectionVariable];
   const platform = host.platform ?? process.platform;
   const exists = host.exists ?? fs.existsSync;
+  if (setting === "off") {
+    return {
+      available: false,
+      reason: `Source projections are turned off by ${projectionVariable}=off.`,
+    };
+  }
+  if (setting) {
+    // Any other value fails safe: an opt-out that ignored a typo, or a 0,
+    // would mount on the very machine that asked not to be mounted on.
+    return {
+      available: false,
+      reason: `Source projections are off: ${projectionVariable} takes only off,`
+        + ` and is ${JSON.stringify(setting)}. Unset it to mount them where the platform allows.`,
+    };
+  }
   if (platform !== "darwin") {
     return {
       available: false,
