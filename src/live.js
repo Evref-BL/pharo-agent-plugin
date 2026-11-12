@@ -113,16 +113,39 @@ export function pifsStartCode(mountPath, imageName) {
  * @returns {{ port: number } | { reason: string } | undefined}
  */
 export function projectionStartOutcome(printString) {
-  const port = Number(printString);
-  if (printString && Number.isInteger(port) && port > 0) return { port };
+  // The value comes first; MCP appends warnings, the Transcript and a
+  // truncation mark on the lines after it.
+  const text = printString ?? "";
+  const digits = /^(\d+)(?:\n|$)/.exec(text);
+  if (digits && Number(digits[1]) > 0) return { port: Number(digits[1]) };
   // A string prints quoted, its quotes doubled, and a long one is cut short
-  // of its closing quote.
-  const quoted = /^'([\s\S]*?)'?$/.exec(printString ?? "");
+  // of its closing quote, before the truncation mark.
+  const quoted = /^'((?:[^']|'')*)(?:'|$)/.exec(text);
   if (!quoted) return undefined;
+  const literal = quoted[1].split("\n[truncated")[0].replaceAll("''", "'").trim();
   return {
-    reason: `${sentence(quoted[1].replaceAll("''", "'").trim())}`
-      + ` Set ${projectionVariable}=off to start images without trying to mount.`,
+    reason: `${sentence(literal)} Set ${projectionVariable}=off to start images without trying to mount.`,
   };
+}
+
+/**
+ * Unmount the projection of an image that is gone, when nothing else will.
+ *
+ * Records written before this one name no PIFS release: fuse-t's daemon
+ * served their projection, and it outlives its image. A later daemon
+ * unmounts on its own once its image is gone. A path with nothing mounted
+ * just fails to unmount.
+ *
+ * @param {{ mountPath?: string, pifsRelease?: string, [key: string]: unknown } | undefined} record
+ * @param {(mountPath: string) => void} [unmount]
+ * @returns {boolean} whether it tried
+ */
+export function releaseFuseTMount(record, unmount = (mountPath) => {
+  spawnSync("umount", [mountPath], { stdio: "ignore" });
+}) {
+  if (record?.mountPath === undefined || record.pifsRelease !== undefined) return false;
+  unmount(record.mountPath);
+  return true;
 }
 
 export function pifsStopCode(projectionPort) {
@@ -246,6 +269,7 @@ export async function startAgentImage(projectRoot, imageId) {
     // The image this record names has exited. Forget it and start again,
     // rather than hand back an endpoint nothing answers and call it running.
     const { [resolved]: exited, ...remaining } = runningImages;
+    releaseFuseTMount(exited);
     runningImages = remaining;
     writeRunningImages(projectRoot, runningImages);
     restarted = true;
@@ -286,6 +310,7 @@ export async function startAgentImage(projectRoot, imageId) {
   const record = { statePath: started.statePath, imageId: image.id, mcpServerId };
   const mountPath = resolveMountPath(projectRoot, readConfig(projectRoot), image.id);
   const availability = projectionAvailability();
+  /** @type {{ port?: number, reason?: string }} */
   let projection = availability;
   if (availability.available) {
     try {
@@ -312,7 +337,10 @@ export async function startAgentImage(projectRoot, imageId) {
     };
   }
   const projectionPort = projection.port;
-  writeRunningImages(projectRoot, { ...runningImages, [resolved]: { ...record, mountPath, projectionPort } });
+  writeRunningImages(projectRoot, {
+    ...runningImages,
+    [resolved]: { ...record, mountPath, projectionPort, pifsRelease },
+  });
   return {
     imageId: image.id,
     created,
@@ -354,8 +382,6 @@ async function stopOneImage(projectRoot, runningImages, imageId) {
   let projectionError;
   // An image started without MCP has no projection to stop, and no route to
   // ask over either.
-  // A gone image has no one to ask, and needs no one: its projection's daemon
-  // unmounts once the image stops answering.
   if (record.projectionPort !== undefined && recordedImageIsRunning(record)) {
     try {
       await callImageTool(projectRoot, record, "image_evaluate", {
@@ -364,6 +390,10 @@ async function stopOneImage(projectRoot, runningImages, imageId) {
     } catch (error) {
       projectionError = error;
     }
+  } else {
+    // A gone image has no one to ask, and its projection's daemon unmounts
+    // on its own, unless fuse-t's served it.
+    releaseFuseTMount(record);
   }
   const stopped = await runLifecycle(
     () => stopProjectImage({ projectRoot, imageId }),

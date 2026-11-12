@@ -11,6 +11,7 @@ import {
   pharoMcpWarning,
   projectionAvailability,
   projectionStartOutcome,
+  releaseFuseTMount,
   projectionUnavailableWarning,
   fetchPifsRelease,
   pifsRelease,
@@ -580,6 +581,36 @@ test("a projection start answers its port, why it has none, or nothing readable"
   for (const neither of [undefined, "", "nil", "0", "-1", "3.5", "a Dictionary()"]) {
     assert.equal(projectionStartOutcome(neither), undefined, String(neither));
   }
+});
+
+// MCP's text puts the value first, then a line per warning, the Transcript,
+// and a mark when the value was cut short; a Monticello load warns as often
+// as not.
+test("a projection start reads its value, not what MCP appends after it", () => {
+  const optOut = " Set PHARO_AGENT_PROJECTION=off to start images without trying to mount.";
+  assert.deepEqual(projectionStartOutcome("60341\nWarning: Package PharoImageFS depends on Foo"), { port: 60341 });
+  assert.deepEqual(
+    projectionStartOutcome("'key #PIFSServer not found'\nWarning: Package PharoImageFS depends on Foo\nTranscript:\nloading"),
+    { reason: "key #PIFSServer not found." + optOut },
+  );
+  assert.deepEqual(
+    projectionStartOutcome("'it''s cut short...\n[truncated]\nWarning: later"),
+    { reason: "it's cut short..." + optOut },
+  );
+});
+
+// fuse-t's daemon outlived its image, so the plugin unmounted what it left;
+// the daemons PIFS starts now unmount on their own, and their records name
+// the PIFS release that started them.
+test("only a projection fuse-t served is unmounted for an image that is gone", () => {
+  const unmounted = [];
+  const unmount = (mountPath) => unmounted.push(mountPath);
+
+  assert.equal(releaseFuseTMount({ mountPath: "/p/.pharo-agent/mounts/old", projectionPort: 1 }, unmount), true);
+  assert.equal(releaseFuseTMount({ mountPath: "/p/.pharo-agent/mounts/new", projectionPort: 2, pifsRelease }, unmount), false);
+  assert.equal(releaseFuseTMount({ imageId: "bare" }, unmount), false, "an image started with no projection");
+  assert.equal(releaseFuseTMount(undefined, unmount), false);
+  assert.deepEqual(unmounted, ["/p/.pharo-agent/mounts/old"]);
 });
 
 test("the start code answers a failure's reason instead of failing", () => {
