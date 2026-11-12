@@ -7,12 +7,10 @@ import test from "node:test";
 import { imageGateway, toolFailureMessage, toolResult, withImageSelector } from "../src/gateway.js";
 import {
   describeLifecycleFailure,
-  fuseLibraryPath,
   imageCreationPlan,
-  isMountedAt,
   pharoMcpWarning,
-  releaseProjectionMount,
   projectionAvailability,
+  projectionStartOutcome,
   projectionUnavailableWarning,
   fetchPifsRelease,
   pifsRelease,
@@ -506,54 +504,32 @@ test("a state file that is gone leaves no image running", () => {
   );
 });
 
-// PIFS needs macOS and fuse-t; PLexus and the Pharo MCP need neither. Before
-// this was checked, `image start` mounted unconditionally and stopped the
-// image when the mount failed, so no image could start on Linux or Windows,
-// or on a Mac without fuse-t.
-test("a source projection is offered only where it can be mounted", () => {
-  const withFuse = () => true;
-  const withoutFuse = () => false;
+// Whether a machine can mount is the daemon's to say, and a failed mount keeps
+// the image, so the plugin asks wherever PIFS releases a daemon. Before, it
+// required macOS and fuse-t, which the NFS daemon no longer needs, and shut
+// Linux out.
+test("a source projection is asked for wherever PIFS has a daemon", () => {
+  for (const platform of ["darwin", "linux"]) {
+    assert.deepEqual(projectionAvailability({ env: {}, platform }), { available: true }, platform);
+  }
 
-  assert.deepEqual(
-    projectionAvailability({ env: {}, platform: "darwin", exists: withFuse }),
-    { available: true },
-  );
-
-  const onLinux = projectionAvailability({ env: {}, platform: "linux", exists: withFuse });
-  assert.equal(onLinux.available, false);
-  assert.ok(onLinux.reason);
-  assert.match(onLinux.reason, /needs macOS and fuse-t/);
-  assert.match(onLinux.reason, /linux/);
-
-  const noFuse = projectionAvailability({ env: {}, platform: "darwin", exists: withoutFuse });
-  assert.equal(noFuse.available, false);
-  assert.ok(noFuse.reason);
-  assert.match(noFuse.reason, /brew install --cask fuse-t/);
+  const onWindows = projectionAvailability({ env: {}, platform: "win32" });
+  assert.equal(onWindows.available, false);
+  assert.ok(onWindows.reason);
+  assert.match(onWindows.reason, /macOS and Linux/);
+  assert.match(onWindows.reason, /win32/);
 });
 
 // A machine that could mount may still be one that must not, such as a
 // developer's Mac running an eval harness's agents. The variable answers
 // before the platform is asked.
 test("PHARO_AGENT_PROJECTION=off turns the projection off where it could be mounted", () => {
-  let probed = false;
-  const off = projectionAvailability({
-    env: { PHARO_AGENT_PROJECTION: "off" },
-    platform: "darwin",
-    exists: () => {
-      probed = true;
-      return true;
-    },
-  });
+  const off = projectionAvailability({ env: { PHARO_AGENT_PROJECTION: "off" }, platform: "darwin" });
   assert.equal(off.available, false);
   assert.ok(off.reason);
   assert.match(off.reason, /PHARO_AGENT_PROJECTION=off/);
-  assert.equal(probed, false, "fuse-t was looked for anyway");
 
-  const offOnLinux = projectionAvailability({
-    env: { PHARO_AGENT_PROJECTION: "off" },
-    platform: "linux",
-    exists: () => true,
-  });
+  const offOnLinux = projectionAvailability({ env: { PHARO_AGENT_PROJECTION: "off" }, platform: "linux" });
   assert.equal(offOnLinux.reason, off.reason);
 });
 
@@ -561,11 +537,7 @@ test("PHARO_AGENT_PROJECTION=off turns the projection off where it could be moun
 // machine that asked not to be mounted on.
 test("a PHARO_AGENT_PROJECTION other than off turns the projection off too, and says why", () => {
   for (const value of ["0", "false", "OFF", "on"]) {
-    const answer = projectionAvailability({
-      env: { PHARO_AGENT_PROJECTION: value },
-      platform: "darwin",
-      exists: () => true,
-    });
+    const answer = projectionAvailability({ env: { PHARO_AGENT_PROJECTION: value }, platform: "darwin" });
     assert.equal(answer.available, false, value);
     assert.ok(answer.reason);
     assert.match(answer.reason, /PHARO_AGENT_PROJECTION takes only off/);
@@ -575,20 +547,12 @@ test("a PHARO_AGENT_PROJECTION other than off turns the projection off too, and 
 
 test("an unset or empty PHARO_AGENT_PROJECTION leaves the platform to decide", () => {
   for (const env of [{}, { PHARO_AGENT_PROJECTION: "" }]) {
-    assert.deepEqual(
-      projectionAvailability({ env, platform: "darwin", exists: () => true }),
-      { available: true },
-    );
+    assert.deepEqual(projectionAvailability({ env, platform: "darwin" }), { available: true });
   }
 });
 
-test("the fuse-t library is looked for where its installer puts it", () => {
-  // A .pkg installer, so /usr/local whatever Homebrew's prefix is.
-  assert.equal(fuseLibraryPath, "/usr/local/lib/libfuse-t.dylib");
-});
-
 test("a missing projection says the image and its tools are still there", () => {
-  const unavailable = projectionAvailability({ env: {}, platform: "linux", exists: () => false });
+  const unavailable = projectionAvailability({ env: {}, platform: "win32" });
   assert.ok(unavailable.reason);
   const warning = projectionUnavailableWarning("dev", unavailable.reason);
 
@@ -596,62 +560,30 @@ test("a missing projection says the image and its tools are still there", () => 
   assert.match(warning, /no source projection/);
 });
 
-// The line fuse-t's mount prints, as `mount` lists it on macOS.
-function fuseMountLine(mountPath) {
-  return `fuse-t:/Project-Workspace-dev on ${mountPath} (nfs, nodev, nosuid, mounted by someone)`;
-}
+// A mount that fails is not an evaluation that fails: the start code answers
+// PIFS's reason as a string, after PIFS stopped what it had started, and the
+// image keeps running with that reason as its warning. An answer that is
+// neither says nothing of what PIFS did, so the image is stopped instead.
+test("a projection start answers its port, why it has none, or nothing readable", () => {
+  assert.deepEqual(projectionStartOutcome("60341"), { port: 60341 });
 
-test("a mount is found by the path the mount table prints", () => {
-  // macOS resolves a project's temporary directory through /private, and
-  // prints the resolved path.
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), "pharo-agent-mount-"));
-  try {
-    const mountPath = path.join(root, "dev");
-    const printed = path.join(fs.realpathSync(root), "dev");
-    const table = ["/dev/disk3s1 on / (apfs, local)", fuseMountLine(printed)].join("\n");
+  const optOut = " Set PHARO_AGENT_PROJECTION=off to start images without trying to mount.";
+  const missingFuse = "'pharo-image-fs daemon exited before mounting /p/dev. The daemon logged: FUSE needs fusermount3, which the fuse3 package installs'";
+  assert.deepEqual(projectionStartOutcome(missingFuse), {
+    reason: "pharo-image-fs daemon exited before mounting /p/dev. The daemon logged: FUSE needs fusermount3, which the fuse3 package installs." + optOut,
+  });
+  assert.deepEqual(projectionStartOutcome("'can''t mount.'"), { reason: "can't mount." + optOut });
+  // A long answer is cut short of its closing quote.
+  assert.deepEqual(projectionStartOutcome("'cut short...'"), { reason: "cut short..." + optOut });
+  assert.deepEqual(projectionStartOutcome("'cut short..."), { reason: "cut short..." + optOut });
 
-    assert.equal(isMountedAt(mountPath, table), true);
-    assert.equal(isMountedAt(path.join(root, "de"), table), false, "a prefix is another path");
-    assert.equal(isMountedAt(path.join(root, "other"), table), false);
-  } finally {
-    fs.rmSync(root, { recursive: true, force: true });
+  for (const neither of [undefined, "", "nil", "0", "-1", "3.5", "a Dictionary()"]) {
+    assert.equal(projectionStartOutcome(neither), undefined, String(neither));
   }
 });
 
-test("a projection left mounted by an image that is gone is unmounted", () => {
-  let table = fuseMountLine("/project/.pharo-agent/mounts/dev");
-  const unmounted = [];
-  const host = {
-    mountTable: () => table,
-    unmount: (mountPath) => {
-      unmounted.push(mountPath);
-      table = "";
-    },
-  };
-
-  assert.equal(releaseProjectionMount("/project/.pharo-agent/mounts/dev", host), true);
-  assert.deepEqual(unmounted, ["/project/.pharo-agent/mounts/dev"]);
-});
-
-test("a path with nothing mounted is left alone", () => {
-  const host = {
-    mountTable: () => fuseMountLine("/project/.pharo-agent/mounts/other"),
-    unmount: () => assert.fail("nothing to unmount"),
-  };
-
-  assert.equal(releaseProjectionMount("/project/.pharo-agent/mounts/dev", host), false);
-  assert.equal(releaseProjectionMount(undefined, host), false, "an image started with no projection");
-});
-
-test("a mount that will not go says where it is and how to remove it", () => {
-  // The next projection cannot mount over it, so starting has to stop here.
-  const host = {
-    mountTable: () => fuseMountLine("/project/.pharo-agent/mounts/dev"),
-    unmount: () => {},
-  };
-
-  assert.throws(
-    () => releaseProjectionMount("/project/.pharo-agent/mounts/dev", host),
-    /still mounted at \/project\/\.pharo-agent\/mounts\/dev.*umount "\/project\/\.pharo-agent\/mounts\/dev"/,
-  );
+test("the start code answers a failure's reason instead of failing", () => {
+  const source = pifsStartCode("/p/dev", "dev");
+  assert.match(source, /^\[ Metacello new/);
+  assert.match(source, /\) port \]\s+on: Error\s+do: \[ :error \| error messageText asString \]$/);
 });

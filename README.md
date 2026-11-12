@@ -3,8 +3,8 @@
 `pharo-agent` gives a coding agent a Pharo Launcher of its own. It can see the
 templates the launcher offers, create images from them, start and stop them,
 and work inside the ones it started: classes, methods, senders, tests,
-refactorings, critiques, and the rest of what a Pharo IDE does. On macOS it
-can also read and edit an image's source as files.
+refactorings, critiques, and the rest of what a Pharo IDE does. On macOS and
+Linux it can also read and edit an image's source as files.
 
 It works with Claude Code, Codex and OpenCode.
 
@@ -32,10 +32,10 @@ tested together, and gives the agent one command surface over the lot.
 - Node 22.12 or later.
 - [Pharo Launcher](https://pharo-project.github.io/pharo-launcher/), which is
   where images and templates come from.
-- For editing source as files: macOS with [fuse-t](https://www.fuse-t.org/),
-  installed with `brew install --cask fuse-t`. Its daemon is downloaded for
-  you. Everywhere else images start with their Pharo tools and no projection,
-  rather than failing.
+- For editing source as files: macOS, which needs nothing more, or Linux with
+  FUSE 3 (the `fuse3` package, installed by default on most distributions).
+  Its daemon is downloaded for you. Where a projection cannot mount, the image
+  starts with its Pharo tools and a warning saying why, rather than failing.
 
 The image tools cover Pharo 12 to 15. An image outside that range still
 starts, and says what it will not have.
@@ -76,7 +76,7 @@ its schemas stay out of the agent's context. The tools belong to the image, so
 what exists depends on what that image has loaded. [Tools](docs/tools.md)
 covers both, and serving a different MCP from an image.
 
-**Source as files, on macOS.** Starting an image mounts its source below
+**Source as files, on macOS and Linux.** Starting an image mounts its source below
 `.pharo-agent/mounts`. A file edited there is compiled into the live image:
 the files and the tools are two views of one image, not of an export and an
 image. Setting `PHARO_AGENT_PROJECTION=off` in the environment starts images

@@ -24,37 +24,32 @@ import {
 
 export const pifsRelease = "v0.10.3";
 
-// fuse-t ships as a macOS installer package, so it lands in /usr/local
-// whatever Homebrew's prefix is. The unversioned symlink is what the daemon
-// links against.
-export const fuseLibraryPath = "/usr/local/lib/libfuse-t.dylib";
-
 // Set to `off`, no image mounts a source projection, wherever it runs.
 const projectionVariable = "PHARO_AGENT_PROJECTION";
 
+// The systems PIFS releases a daemon for.
+const projectedPlatforms = ["darwin", "linux"];
+
 /**
- * Whether a source projection can be mounted here.
+ * Whether to ask the image for a source projection.
  *
- * PIFS needs macOS and fuse-t, which is a kernel-adjacent install the user
- * has to approve. PLexus and the Pharo MCP run anywhere, so until this was
- * checked, `image start` mounted unconditionally and then stopped the image
- * when the mount failed -- every image on Linux and Windows, and on any Mac
- * without fuse-t. The image and its tools were never the part that could not
- * work.
+ * Whether this machine can mount is the PIFS daemon's to say: macOS needs
+ * nothing, Linux needs fuse3, and the daemon names what is missing. A
+ * projection that fails leaves the image running with that reason as its
+ * warning, so this answers no only where asking is wasted, on a system PIFS
+ * has no daemon for, or forbidden.
  *
  * A machine that could mount may still be one that must not, so the
- * environment can turn projections off before the platform is asked.
+ * environment can turn projections off before anything is asked.
  *
  * @param {{
  *   env?: Record<string, string | undefined>,
  *   platform?: string,
- *   exists?: (path: string) => boolean,
  * }} [host]
  */
 export function projectionAvailability(host = {}) {
   const setting = (host.env ?? process.env)[projectionVariable];
   const platform = host.platform ?? process.platform;
-  const exists = host.exists ?? fs.existsSync;
   if (setting === "off") {
     return {
       available: false,
@@ -70,25 +65,22 @@ export function projectionAvailability(host = {}) {
         + ` and is ${JSON.stringify(setting)}. Unset it to mount them where the platform allows.`,
     };
   }
-  if (platform !== "darwin") {
+  if (!projectedPlatforms.includes(platform)) {
     return {
       available: false,
-      reason: "A source projection needs macOS and fuse-t, which this platform"
-        + ` (${platform}) cannot provide.`,
-    };
-  }
-  if (!exists(fuseLibraryPath)) {
-    return {
-      available: false,
-      reason: "A source projection needs fuse-t, which is not installed."
-        + " Install it with `brew install --cask fuse-t`.",
+      reason: `PIFS mounts source projections on macOS and Linux, not on this platform (${platform}).`,
     };
   }
   return { available: true };
 }
 
+// The daemon's own reasons end without a period.
+function sentence(text) {
+  return /[.!?]$/.test(text) ? text : `${text}.`;
+}
+
 export function projectionUnavailableWarning(imageId, reason) {
-  return `${reason} Image ${imageId} is running with its Pharo tools and no`
+  return `${sentence(reason)} Image ${imageId} is running with its Pharo tools and no`
     + " source projection; read and edit its code through the tools.";
 }
 
@@ -99,69 +91,42 @@ export function projectionUnavailableWarning(imageId, reason) {
 export const pifsSelectors = ["startMountedAt:named:", "stopOn:"];
 
 export function pifsStartCode(mountPath, imageName) {
-  return `Metacello new
-	baseline: 'PharoImageFS';
-	repository: 'github://Evref-BL/pharo-image-fs:${pifsRelease}/src';
-	load: 'Core'.
-((Smalltalk globals at: #PIFSServer)
-	startMountedAt: ${smalltalkString(mountPath)} asFileReference
-	named: ${smalltalkString(imageName)}) port`;
+  // A projection that cannot mount answers why, as a string, rather than
+  // failing the evaluation: the reason is the daemon's, and becomes the
+  // warning of an image that keeps running.
+  return `[ Metacello new
+		baseline: 'PharoImageFS';
+		repository: 'github://Evref-BL/pharo-image-fs:${pifsRelease}/src';
+		load: 'Core'.
+	((Smalltalk globals at: #PIFSServer)
+		startMountedAt: ${smalltalkString(mountPath)} asFileReference
+		named: ${smalltalkString(imageName)}) port ]
+	on: Error
+	do: [ :error | error messageText asString ]`;
+}
+
+/**
+ * What a projection start answered: the port serving it, why PIFS could not
+ * mount, or nothing readable.
+ *
+ * @param {string | undefined} printString
+ * @returns {{ port: number } | { reason: string } | undefined}
+ */
+export function projectionStartOutcome(printString) {
+  const port = Number(printString);
+  if (printString && Number.isInteger(port) && port > 0) return { port };
+  // A string prints quoted, its quotes doubled, and a long one is cut short
+  // of its closing quote.
+  const quoted = /^'([\s\S]*?)'?$/.exec(printString ?? "");
+  if (!quoted) return undefined;
+  return {
+    reason: `${sentence(quoted[1].replaceAll("''", "'").trim())}`
+      + ` Set ${projectionVariable}=off to start images without trying to mount.`,
+  };
 }
 
 export function pifsStopCode(projectionPort) {
   return `(Smalltalk globals at: #PIFSServer) stopOn: ${projectionPort}`;
-}
-
-// `mount` prints one "<source> on <path> (<options>)" line per mount, with the
-// path resolved, so a project under a symlink is looked for by its real path.
-export function isMountedAt(mountPath, mountTable) {
-  let realPath = mountPath;
-  try {
-    realPath = path.join(fs.realpathSync(path.dirname(mountPath)), path.basename(mountPath));
-  } catch {
-    // No parent directory, so nothing can be mounted there either.
-  }
-  return mountTable
-    .split("\n")
-    .some((line) => line.includes(` on ${mountPath} (`) || line.includes(` on ${realPath} (`));
-}
-
-function currentMountTable() {
-  return spawnSync("mount", [], { encoding: "utf8" }).stdout ?? "";
-}
-
-function unmount(mountPath) {
-  // What PIFSServer>>stopDaemon runs when it stops a projection itself.
-  if (spawnSync("umount", [mountPath], { stdio: "ignore" }).status !== 0) {
-    spawnSync("diskutil", ["unmount", mountPath], { stdio: "ignore" });
-  }
-}
-
-/**
- * Unmount a projection whose image is gone.
- *
- * The mount is served by a PIFS daemon, a process of its own that reads the
- * source over HTTP from the image. PIFS unmounts it from inside the image when
- * it stops, which an image that crashed or was closed never does: the mount
- * stays, every read in it fails with an I/O error, and it holds the path
- * against the next projection. Unmounting is enough; the daemon exits with its
- * mount.
- *
- * @param {string | undefined} mountPath
- * @param {{ mountTable?: () => string, unmount?: (path: string) => void }} [host]
- * @returns {boolean} whether something was unmounted
- */
-export function releaseProjectionMount(mountPath, host = {}) {
-  const mountTable = host.mountTable ?? currentMountTable;
-  if (mountPath === undefined || !isMountedAt(mountPath, mountTable())) return false;
-  (host.unmount ?? unmount)(mountPath);
-  if (isMountedAt(mountPath, mountTable())) {
-    throw new Error(
-      `The source projection of an image that is gone is still mounted at ${mountPath},`
-        + ` and could not be unmounted. Run umount ${JSON.stringify(mountPath)}, then try again.`,
-    );
-  }
-  return true;
 }
 
 function namedPrintString(value) {
@@ -286,11 +251,6 @@ export async function startAgentImage(projectRoot, imageId) {
     restarted = true;
   }
   if (projectionAvailability().available) {
-    // This project has no live image at this mount path now: none was
-    // recorded, or the one recorded has exited. Whatever is still mounted
-    // there was left by an image that is gone, and would hold the path
-    // against the projection about to be mounted.
-    releaseProjectionMount(resolveMountPath(projectRoot, readConfig(projectRoot), resolved));
     fetchPifsRelease(pifsCloneDirectory(projectRoot));
   }
   const launcher = new ScopedPharoLauncher({ projectRoot });
@@ -323,11 +283,23 @@ export async function startAgentImage(projectRoot, imageId) {
     return { ...record, created, warning: pharoMcpWarning(withoutMcp) };
   }
   const unappliedPin = unappliedPharoMcpPin(image);
-  const projection = projectionAvailability();
-  if (!projection.available) {
+  const record = { statePath: started.statePath, imageId: image.id, mcpServerId };
+  const mountPath = resolveMountPath(projectRoot, readConfig(projectRoot), image.id);
+  const availability = projectionAvailability();
+  let projection = availability;
+  if (availability.available) {
+    try {
+      projection = await startProjection(projectRoot, record, mountPath, image.imageName);
+    } catch (error) {
+      // Nothing says whether PIFS mounted, so stop the image rather than keep
+      // a mount nothing records: its daemon unmounts once the image is gone.
+      await stopProjectImage({ projectRoot, imageId: resolved }).catch(() => {});
+      throw error;
+    }
+  }
+  if (projection.reason !== undefined) {
     // The image and its tools are the point; the projection is the extra this
-    // package bundles where the platform allows it.
-    const record = { statePath: started.statePath, imageId: image.id, mcpServerId };
+    // package bundles where the machine allows it.
     writeRunningImages(projectRoot, { ...runningImages, [resolved]: record });
     return {
       imageId: image.id,
@@ -339,25 +311,8 @@ export async function startAgentImage(projectRoot, imageId) {
       ].filter(Boolean).join("\n"),
     };
   }
-
-  const mountPath = resolveMountPath(projectRoot, readConfig(projectRoot), image.id);
-  fs.mkdirSync(path.dirname(mountPath), { recursive: true });
-  const record = {
-    statePath: started.statePath,
-    imageId: image.id,
-    mcpServerId,
-    mountPath,
-  };
-  let projectionPort;
-  try {
-    projectionPort = await startProjection(projectRoot, record, image.imageName);
-  } catch (error) {
-    // The projection is half-started at best and nothing records it yet, so
-    // stop the image rather than leave an image and a mount nothing owns.
-    await stopProjectImage({ projectRoot, imageId: resolved }).catch(() => {});
-    throw error;
-  }
-  writeRunningImages(projectRoot, { ...runningImages, [resolved]: { ...record, projectionPort } });
+  const projectionPort = projection.port;
+  writeRunningImages(projectRoot, { ...runningImages, [resolved]: { ...record, mountPath, projectionPort } });
   return {
     imageId: image.id,
     created,
@@ -382,17 +337,16 @@ export function pharoMcpWarning(image) {
     + " drive it with the Pharo command line instead.";
 }
 
-async function startProjection(projectRoot, record, imageName) {
+async function startProjection(projectRoot, record, mountPath, imageName) {
   const result = await callImageTool(projectRoot, record, "image_evaluate", {
-    code: pifsStartCode(record.mountPath, imageName),
+    code: pifsStartCode(mountPath, imageName),
   });
-  const projectionPort = Number(resultPrintString(result));
-  if (!Number.isInteger(projectionPort) || projectionPort < 1) {
-    throw new Error(
-      `PIFS did not report a projection port: ${JSON.stringify(result).slice(0, 500)}`,
-    );
+  // A refusal is PIFS's own: it stopped what it had started.
+  const outcome = projectionStartOutcome(resultPrintString(result));
+  if (!outcome) {
+    throw new Error(`PIFS did not report a projection port: ${JSON.stringify(result).slice(0, 500)}`);
   }
-  return projectionPort;
+  return outcome;
 }
 
 async function stopOneImage(projectRoot, runningImages, imageId) {
@@ -400,16 +354,13 @@ async function stopOneImage(projectRoot, runningImages, imageId) {
   let projectionError;
   // An image started without MCP has no projection to stop, and no route to
   // ask over either.
-  if (record.projectionPort !== undefined) {
+  // A gone image has no one to ask, and needs no one: its projection's daemon
+  // unmounts once the image stops answering.
+  if (record.projectionPort !== undefined && recordedImageIsRunning(record)) {
     try {
-      if (recordedImageIsRunning(record)) {
-        await callImageTool(projectRoot, record, "image_evaluate", {
-          code: pifsStopCode(record.projectionPort),
-        });
-      } else {
-        // PIFS stops a projection from inside its image, and this one is gone.
-        releaseProjectionMount(record.mountPath);
-      }
+      await callImageTool(projectRoot, record, "image_evaluate", {
+        code: pifsStopCode(record.projectionPort),
+      });
     } catch (error) {
       projectionError = error;
     }

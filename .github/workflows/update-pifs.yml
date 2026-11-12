@@ -20,7 +20,6 @@ jobs:
     timeout-minutes: 30
     env:
       PIFS_REPOSITORY: Evref-BL/pharo-image-fs
-      DAEMON_REPOSITORY: Evref-BL/pharo-image-fs-daemon
     steps:
       - uses: actions/create-github-app-token@v2
         id: app-token
@@ -44,20 +43,8 @@ jobs:
           version="${EVENT_PIFS_VERSION:-$INPUT_PIFS_VERSION}"
           version="${version#v}"
           [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          # PIFS's own release waits for every daemon asset at its version.
           gh release view "v$version" --repo "$PIFS_REPOSITORY" --json tagName --jq .tagName
-
-          # The image downloads the daemon for this exact version, so refuse a
-          # release that lacks a daemon asset the plugin needs. Assets it does
-          # not use, such as other platforms' builds, are ignored.
-          assets="$(gh release view "v$version" --repo "$DAEMON_REPOSITORY" --json assets --jq '[.assets[].name] | sort | join(",")' 2>/dev/null || true)"
-          missing=""
-          for needed in pharo-image-fs-daemon-darwin-amd64.zip pharo-image-fs-daemon-darwin-arm64.zip; do
-            [[ ",$assets," == *",$needed,"* ]] || missing="${missing:+$missing,}$needed"
-          done
-          if [ -n "$missing" ]; then
-            echo "$DAEMON_REPOSITORY v$version must publish $missing, found: ${assets:-<no release>}" >&2
-            exit 1
-          fi
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
       - name: Prepare the update

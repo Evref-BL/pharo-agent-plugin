@@ -57,19 +57,22 @@ Pharo tool takes the same optional `image` argument.
 An image can exit without being stopped: it crashes, or its window is closed.
 `image list` then lists it as `exited` rather than running, and the `mcp`
 server lists its own tools without the image's. `image start` starts it again,
-and `image stop` forgets it. Either one also unmounts the source projection
-the image left behind, which nothing in the image is left to unmount.
+and `image stop` forgets it. Its source projection unmounts on its own a few
+seconds after the image exits: the daemon serving it watches the image.
 
 ## Where the source projection works
 
 An image and its Pharo tools run anywhere Node does. Projecting its source as
-files needs macOS with [fuse-t](https://www.fuse-t.org/), which is an install
-the user has to approve, so `image start` checks before mounting:
+files works on macOS, with nothing to install, and on Linux with FUSE 3. When
+the mount fails, `image start` keeps the image and passes on why:
 
 ```json
 { "ok": true, "imageId": "dev",
-  "warning": "A source projection needs macOS and fuse-t, which this platform (linux) cannot provide. Image dev is running with its Pharo tools and no source projection; read and edit its code through the tools." }
+  "warning": "pharo-image-fs daemon exited before mounting /home/me/project/.pharo-agent/mounts/dev. The daemon logged: FUSE needs fusermount3, which the fuse3 package installs. Set PHARO_AGENT_PROJECTION=off to start images without trying to mount. Image dev is running with its Pharo tools and no source projection; read and edit its code through the tools." }
 ```
+
+A start whose outcome PIFS does not report, such as a call that times out,
+stops the image instead, since its projection may have mounted anyway.
 
 The image is running and fully usable; `mountPath` and `projectionPort` are
 absent from `image list`, and `image stop` has nothing extra to unmount.
