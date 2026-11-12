@@ -47,11 +47,15 @@ jobs:
           gh release view "v$version" --repo "$PIFS_REPOSITORY" --json tagName --jq .tagName
 
           # The image downloads the daemon for this exact version, so refuse a
-          # release whose daemon assets are missing.
+          # release that lacks a daemon asset the plugin needs. Assets it does
+          # not use, such as other platforms' builds, are ignored.
           assets="$(gh release view "v$version" --repo "$DAEMON_REPOSITORY" --json assets --jq '[.assets[].name] | sort | join(",")' 2>/dev/null || true)"
-          expected="pharo-image-fs-daemon-darwin-amd64.zip,pharo-image-fs-daemon-darwin-arm64.zip"
-          if [ "$assets" != "$expected" ]; then
-            echo "$DAEMON_REPOSITORY v$version must publish $expected, found: ${assets:-<no release>}" >&2
+          missing=""
+          for needed in pharo-image-fs-daemon-darwin-amd64.zip pharo-image-fs-daemon-darwin-arm64.zip; do
+            [[ ",$assets," == *",$needed,"* ]] || missing="${missing:+$missing,}$needed"
+          done
+          if [ -n "$missing" ]; then
+            echo "$DAEMON_REPOSITORY v$version must publish $missing, found: ${assets:-<no release>}" >&2
             exit 1
           fi
           echo "version=$version" >> "$GITHUB_OUTPUT"
