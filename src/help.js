@@ -36,7 +36,7 @@ const commands = {
   "image start": {
     usage: "image start [<id>]",
     description: "Create if needed and start an image, the default one without an id. Others keep running.\n"
-      + "On macOS with fuse-t its source mounts as files, unless PHARO_AGENT_PROJECTION=off.",
+      + "On macOS and Linux its source mounts as files, unless PHARO_AGENT_PROJECTION=off.",
     example: "image start dev",
   },
   "image stop": {

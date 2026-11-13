@@ -75,7 +75,7 @@ const projectTools = [
     name: "image_start",
     description:
       "Start an image, creating it the first time. Its tools are listed once "
-      + "it answers. On macOS with fuse-t its source also mounts as files.",
+      + "it answers. On macOS and Linux its source also mounts as files.",
     inputSchema: {
       type: "object",
       properties: {

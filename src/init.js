@@ -178,7 +178,7 @@ session's. Stop an image and remove its declaration when its subject is done.
 With the \`pharo\` MCP server, an image's tools are MCP tools. Otherwise run
 one as \`pharo-agent <tool> --<argument> <value>\`: \`<tool> --help\` lists its
 arguments, and a value of \`-\` is read from stdin. \`pharo-agent list\` names
-the common tools; \`tool_search\` finds the rest. On macOS with fuse-t,
+the common tools; \`tool_search\` finds the rest. On macOS and Linux,
 \`image start\` also mounts the source under \`.pharo-agent/mounts\`.
 
 ${pharoRouting()}
