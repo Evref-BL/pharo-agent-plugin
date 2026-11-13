@@ -22,7 +22,7 @@ import {
   writeRunningImages,
 } from "./runtime.js";
 
-export const pifsRelease = "v0.10.3";
+export const pifsRelease = "v0.11.0";
 
 // Set to `off`, no image mounts a source projection, wherever it runs.
 const projectionVariable = "PHARO_AGENT_PROJECTION";
