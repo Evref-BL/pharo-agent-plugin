@@ -32,7 +32,7 @@
     "test": "node --import ./test/support/plexus-hook.js --test test/*.test.js"
   },
   "dependencies": {
-    "@evref-bl/pharo-mcp": "3.6.0",
+    "@evref-bl/pharo-mcp": "3.7.0",
     "@evref-bl/plexus": "0.15.2",
     "@modelcontextprotocol/sdk": "1.32.2"
   },
