@@ -20,11 +20,14 @@ pharo-agent init --host <claude|codex|opencode>
   the guide points at, copied from the pinned MCP template package.
 - for OpenCode only, the `pharo` entry under `mcp` in the project's
   `opencode.json`, keeping the rest of that file. See below.
-- `plexus.json`, if the directory has none.
+- `.pharo-agent/config.json`, which makes the directory a project: the scope
+  that tells its images from other projects' (see [Images](images.md)), taken
+  from the directory's name, and the mount root.
 
 `init` acts on the current directory and never searches above it. It refuses to
-run inside an enclosing PLexus project rather than initializing that root, and
-refuses to replace a `pharo.AGENTS.md` it did not generate.
+run inside an enclosing project, one with its own `.pharo-agent/config.json`,
+rather than initializing that root, and refuses to replace a `pharo.AGENTS.md`
+it did not generate.
 
 It does not register an MCP server with the host. `pharo-agent mcp` is there
 for a chat that wants one, per project rather than globally.
@@ -42,16 +45,16 @@ pharo-agent block in the selected host's guide. Put project-specific guidance
 outside that block, and keep custom files separate from the generated/copied
 paths. Unrelated files are not removed during refresh.
 
-Existing `plexus.json`, including image declarations, is preserved. Omit
-`--mount-root` to preserve the existing plugin configuration, including custom
-mount roots and the default image. Runtime records and mounted sources are
-left alone; refresh does not start, stop, save, or reload images.
+The existing `.pharo-agent/config.json` is kept: its scope, its default image
+and, unless `--mount-root` is given, its mount root. A config with no scope
+gains the one the directory's name gives, so renaming the directory later does
+not part the project from its images. Runtime records and mounted sources are
+left alone; refresh does not create, start, stop, save, or delete images.
 
 Updating the installed package, refreshing project files, and upgrading code
-inside an image are separate operations. In particular, an image started with
-MCP's `ifMissing` load policy keeps the MCP it already has. Follow the
-[image update guidance](images.md#an-image-that-brought-its-own-mcp) when an
-image also needs a newer MCP; re-running `init` does not perform that upgrade.
+inside an image are separate operations. In particular, an image keeps the MCP
+it was created with; [Images](images.md#an-image-made-with-another-mcp) says
+how to give it the pinned one, which re-running `init` does not do.
 
 ## Installing as a plugin
 

@@ -15,7 +15,7 @@ npx --yes @evref-bl/pharo-agent@0.17.1 init --host claude
 
 It writes the project's Pharo guide, skills and references, and a block in the
 host's guide that points to them; no host configuration. Re-running it after
-an upgrade replaces those files and keeps image declarations and image code.
+an upgrade replaces those files and keeps the project's images and settings.
 
 In Claude Code, enable the plugin for this project in `.claude/settings.json`;
 the next session gets the tools:
@@ -34,11 +34,11 @@ the next session gets the tools:
 }
 ```
 
-Then declare the project's first image, its default:
+Then create the project's first image, its default:
 
 ```sh
 pharo-agent image templates
-pharo-agent image add dev --template '<launcher template name>'
+pharo-agent image create dev --template '<launcher template name>'
 ```
 
 Read `pharo.AGENTS.md` before doing Pharo work.

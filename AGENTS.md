@@ -9,28 +9,31 @@ for that project only, and nothing else of that file changes.
 
 ## Boundaries
 
-- PLexus owns image lifecycle, runtime state, and image endpoint discovery.
+- PLexus owns images: creating, listing, starting, stopping and deleting
+  them, and where a running one answers. Nothing here keeps a list of images
+  or of which ones run.
 - MCP owns semantic image operations.
 - pharo-image-fs owns the projection protocol and mount daemon.
 - This package owns project initialization, conditional guidance, command
   orchestration, and only resources recorded as plugin-owned.
-- The MCP forwarding bridge is process-scoped: it reads PLexus state, serves
-  one terminal command over stdio, then exits. Do not add an HTTP gateway,
-  gateway port, or a background route service.
+- The MCP forwarding bridge is process-scoped: it asks PLexus where the image
+  answers on every call, serves one terminal command over stdio, then exits.
+  Do not add an HTTP gateway, gateway port, or a background route service.
 
 ## Interface
 
 - Keep ordinary commands argument-light: `init --host`, `image start`,
   `image list`, `image stop`, and `<tool>` with its arguments as flags read
   from the tool's schema.
-- Images are addressed by id, in PLexus's vocabulary: `start`, `stop`, `list`,
-  never `open`, `close` or `status`. An image is a host process this project
-  starts and stops; nothing here keeps a project-wide lifecycle state.
+- Images are addressed by name, in PLexus's vocabulary: `create`, `start`,
+  `stop`, `delete`, `list`, never `add`, `remove`, `open`, `close` or `status`.
+  A running image is a process: `list` asks like `ps`, `start` is `exec` and
+  `stop` is `kill`. Nothing here remembers whether an image runs.
 - `src/hosts.js` is the one list of supported hosts, in the order they are
   offered. The usage line, the error message, the README and the setup skill
   all follow it; do not spell the hosts out anywhere else.
-- Never expose gateway URLs, ports, project roots, workspace IDs, target IDs,
-  or MCP server IDs as normal agent arguments.
+- Never take endpoints, ports, project roots or scopes as normal agent
+  arguments.
 - Do not register template skills with an agent host. The generated root shim
   says to read `pharo.AGENTS.md` only for Pharo work; that guide selects a
   copied skill only when necessary.
@@ -47,6 +50,10 @@ for that project only, and nothing else of that file changes.
 - Run `npm test` and `npm run check` after JavaScript changes. `check` type-checks
   the sources against the published types of the packages this one pins, so a pin
   bump that retires an API fails there.
+- Tests never start a Pharo image. `npm test` loads `test/support/plexus-hook.js`
+  first, which hands every import of `@evref-bl/plexus` the fake beside it; a
+  test that spawns `pharo-agent` passes the same hook with `--import`, and sets
+  the fake's store up with `useFakePlexus`.
 - Use disposable directories for initializer tests. Preserve existing user
   guidance outside the plugin's marked managed block.
 - Do not claim live image or mount validation without a disposable image and
