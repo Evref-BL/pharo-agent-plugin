@@ -6,13 +6,12 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 import { defaultPharoMcpVersion } from "@evref-bl/plexus";
 
 export { defaultPharoMcpVersion };
 
 /** The module to --import into a spawned pharo-agent, so it gets this fake too. */
-export const plexusHook = fileURLToPath(new URL("./plexus-hook.js", import.meta.url));
+export const plexusHook = new URL("./plexus-hook.js", import.meta.url).href;
 
 const worldVariable = "PHARO_AGENT_FAKE_PLEXUS";
 const namePattern = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
