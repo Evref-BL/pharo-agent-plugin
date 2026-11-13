@@ -226,8 +226,10 @@ export async function serveImagesMcp(resolveProjectRoot, selectedImage) {
       return toolResult({ ok: true, ...started });
     }
     if (tool === "image_stop") {
+      // A name given with all reaches stopAgentImage, which refuses the pair,
+      // rather than be dropped for the reading that stops the most.
       const stopped = argumentsValue.all === true
-        ? await stopAgentImage(projectRoot, undefined, { all: true })
+        ? await stopAgentImage(projectRoot, optionalString(argumentsValue, "name"), { all: true })
         : await stopAgentImage(projectRoot, optionalString(argumentsValue, "name") ?? selectedImage);
       await server.sendToolListChanged();
       return toolResult({ ok: true, ...stopped });

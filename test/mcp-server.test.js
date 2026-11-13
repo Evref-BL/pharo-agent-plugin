@@ -272,3 +272,15 @@ test("a delete through the server needs the name, never the default", () => {
     assert.ok(readWorld().images["proj-dev"]);
   }, { images: { "proj-dev": pinnedImage() } }, { defaultImage: "dev" });
 });
+
+// Dropping the name read the pair as its most destructive half: every
+// running image of the project, other sessions' included.
+test("a stop through the server that names an image and asks for all is refused", () => {
+  inProject((cwd) => {
+    const { error } = callTool(cwd, "image_stop", { name: "dev", all: true });
+
+    assert.match(error.message, /takes no image name/);
+    assert.deepEqual(callsOf("stop"), []);
+    assert.notEqual(readWorld().images["proj-ci"].running, undefined);
+  }, { images: { "proj-dev": runningImage(41000), "proj-ci": runningImage(42000) } });
+});
