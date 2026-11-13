@@ -8,9 +8,11 @@ for a human reading along. With the plugin enabled, each `image` command but
 
 PLexus keeps every image in one store under its home, `~/.plexus` or
 `$PLEXUS_HOME`, one directory per image. A project's images are the
-directories whose names start with its scope, which `init` takes from the
-project directory's name and writes in `.pharo-agent/config.json`: in a
-project whose scope is `shop`, the image `dev` is the directory `shop-dev`.
+directories whose names start with its scope and a dash, which `init` takes
+from the project directory's name and writes in `.pharo-agent/config.json`: in
+a project whose scope is `shop`, the image `dev` is the directory `shop-dev`.
+A scope holds no dash, so a directory `shop-api` gets the scope `shop_api`,
+and its images are never `shop`'s.
 
 Nothing else records an image. It exists while its directory does, and it is
 running while a Pharo VM runs its image file. `image list` asks both questions

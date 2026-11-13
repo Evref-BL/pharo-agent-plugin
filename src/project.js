@@ -70,25 +70,42 @@ export function writeConfig(projectRoot, config) {
   fs.writeFileSync(configPath(projectRoot), `${JSON.stringify(config, null, 2)}\n`);
 }
 
+// PLexus's rule for a scope. It holds no dash because the first dash of an
+// image's directory name ends its scope: were `repo-fix` a scope, `repo`
+// would list, stop and delete its images as its own.
+const scopePattern = /^[A-Za-z0-9][A-Za-z0-9._]{0,63}$/;
+
 /**
- * The scope a directory name gives: runs of characters a PLexus name cannot
- * hold become one `-`, and what remains starts with a letter or a digit and
- * fits PLexus's 64 characters.
+ * The scope a directory name gives: runs of characters a scope cannot hold
+ * become one `_`, and what remains starts with a letter or a digit and fits
+ * PLexus's 64 characters.
  */
 export function scopeFromDirectory(projectRoot) {
   const sanitized = path.basename(path.resolve(projectRoot))
-    .replace(/[^A-Za-z0-9._-]+/g, "-")
+    .replace(/[^A-Za-z0-9._]+/g, "_")
     .replace(/^[^A-Za-z0-9]+/, "")
     .slice(0, 64)
-    .replace(/-+$/, "");
+    .replace(/_+$/, "");
   return sanitized || "default";
 }
 
-// PLexus keeps every image in one store and tells a project's images from
-// the rest by this prefix alone, so it is pinned in the config: renaming the
-// directory must not leave the project's images behind under the old name.
+/**
+ * The scope that tells this project's images from every other's in PLexus's
+ * one store: the config's, pinned at init so that renaming the directory
+ * does not leave the images behind, or the directory's when it has none.
+ */
 export function projectScope(projectRoot, config = readConfig(projectRoot)) {
-  return typeof config.scope === "string" ? config.scope : scopeFromDirectory(projectRoot);
+  if (config.scope === undefined) return scopeFromDirectory(projectRoot);
+  // An empty scope reaches PLexus as none, which is every image of every
+  // project, so a scope the config gets wrong stops here.
+  if (typeof config.scope !== "string" || !scopePattern.test(config.scope)) {
+    throw new Error(
+      `The scope ${JSON.stringify(config.scope)} in ${configPath(projectRoot)} is not valid: `
+        + "use 1 to 64 letters, digits, dots or underscores, starting with a letter or a digit, "
+        + "or remove it to use the one the directory's name gives.",
+    );
+  }
+  return config.scope;
 }
 
 /** The image a command names, or the project's default when it names none. */

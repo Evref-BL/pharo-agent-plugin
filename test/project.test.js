@@ -63,12 +63,20 @@ test("the host says where the project is when the directory does not", () => {
 
 test("a directory name becomes a scope PLexus accepts", () => {
   assert.equal(scopeFromDirectory("/work/Pharo4Agents"), "Pharo4Agents");
-  assert.equal(scopeFromDirectory("/work/My Project (2)"), "My-Project-2");
+  assert.equal(scopeFromDirectory("/work/My Project (2)"), "My_Project_2");
   assert.equal(scopeFromDirectory("/work/.hidden"), "hidden");
   assert.equal(scopeFromDirectory("/work/((("), "default");
   const long = scopeFromDirectory(`/work/${"a".repeat(63)} b`);
-  assert.match(long, /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/);
+  assert.match(long, /^[A-Za-z0-9][A-Za-z0-9._]{0,63}$/);
   assert.equal(long, "a".repeat(63));
+});
+
+// A dash ends a scope in an image's directory name, so `repo-fix` as a scope
+// made `repo` list, stop and delete the worktree's images as its own.
+test("a dashed directory name gives a scope without dashes", () => {
+  assert.equal(scopeFromDirectory("/work/repo-fix"), "repo_fix");
+  assert.equal(scopeFromDirectory("/work/shop-api"), "shop_api");
+  assert.equal(scopeFromDirectory("/work/a - b"), "a_b");
 });
 
 test("the scope in the config wins over the directory name", () => {
@@ -77,6 +85,20 @@ test("the scope in the config wins over the directory name", () => {
     assert.equal(projectScope(root), "pinned");
     writeConfig(root, {});
     assert.equal(projectScope(root), scopeFromDirectory(root));
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+// An empty scope reaches PLexus as none, which lists, and stops with --all,
+// every image of every project.
+test("a scope the config gets wrong is refused, naming the config", () => {
+  const root = temporaryProject();
+  try {
+    for (const scope of ["", "shop-api", "a b", 42, null]) {
+      writeConfig(root, { scope });
+      assert.throws(() => projectScope(root), /The scope .* in .*config\.json is not valid/, String(scope));
+    }
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }

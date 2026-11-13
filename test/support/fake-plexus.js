@@ -15,6 +15,7 @@ export const plexusHook = new URL("./plexus-hook.js", import.meta.url).href;
 
 const worldVariable = "PHARO_AGENT_FAKE_PLEXUS";
 const namePattern = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
+const scopePattern = /^[A-Za-z0-9][A-Za-z0-9._]{0,63}$/;
 
 /**
  * @typedef {{
@@ -150,6 +151,9 @@ function row(world, scope, diskName) {
 export class Images {
   /** @param {{ home?: string, scope?: string }} [options] */
   constructor(options = {}) {
+    if (options.scope !== undefined && !scopePattern.test(options.scope)) {
+      throw new PlexusError("invalid-name", `Scope ${JSON.stringify(options.scope)} is not valid.`);
+    }
     this.scope = options.scope;
   }
 
