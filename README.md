@@ -14,8 +14,8 @@ This plugin is the glue. Three projects do the work, and each is useful on its
 own:
 
 - [PLexus](https://github.com/Evref-BL/PLexus) drives Pharo Launcher. It
-  creates, starts and stops a project's images, keeps their state outside the
-  images, and forwards MCP calls to the server running in each one.
+  creates, lists, starts, stops and deletes images, and forwards MCP calls to
+  the server running in each one.
 - [MCP for Pharo](https://github.com/Evref-BL/MCP) is that server. It works
   through Pharo's own compiler, refactorings, SUnit, Iceberg and Epicea rather
   than patching exported text, and it maintains the Pharo guidance a project
@@ -37,8 +37,9 @@ tested together, and gives the agent one command surface over the lot.
   Its daemon is downloaded for you. Where a projection cannot mount, the image
   starts with its Pharo tools and a warning saying why, rather than failing.
 
-The image tools cover Pharo 12 to 15. An image outside that range still
-starts, and says what it will not have.
+On a Pharo version the pinned MCP does not load on, creating an image fails
+with the load's own error, unless a load script of your own brings the tools
+in another way.
 
 ## Setup
 
@@ -63,11 +64,12 @@ npx --yes @evref-bl/pharo-agent init --host <claude|codex|opencode>
 ## What the agent gets
 
 **The launcher.** `image templates` names every template the installation
-offers. `image add <id> --template <name>` declares an image, and
-`image start <id>` creates it from that template the first time and starts it.
-A project can declare as many images as it likes — one per Pharo version, one
-to throw away — and run them at once; `image list` says what is declared and
-what is running. [Images](docs/images.md) has the rest.
+offers. `image create <name> --template <template>` makes an image with the
+image tools in it, `image start <name>` starts it, `image stop <name>` kills
+it, and `image delete <name>` deletes it. A project can have as many images as
+it likes — one per Pharo version, one per subject, one to throw away — and run
+them at once; `image list` says which exist and which are running.
+[Images](docs/images.md) has the rest.
 
 **The tools of each running image.** Classes, methods, senders, tests and
 evaluation are advertised; the fuller catalogue, such as packages,
@@ -100,9 +102,9 @@ Upgrade the plugin the way you installed it, then run the setup command again
 in the project, naming the same host. That rewrites the generated guide and
 the files copied with it, from the templates the new version pins.
 
-Image declarations, runtime state and settings are kept, as long as you omit
-`--mount-root`, and so is anything outside the block the plugin marks as its
-own. Generated and copied files are overwritten, so keep project-specific
+Images, runtime state and settings are kept, and so is anything outside the
+block the plugin marks as its own; `--mount-root` changes only the mount root.
+Generated and copied files are overwritten, so keep project-specific
 instructions out of them. Refreshing a project upgrades neither the installed
 plugin nor the code inside a running image; [Images](docs/images.md) covers
 the image side.
@@ -114,7 +116,7 @@ gives its options, defaults and an example. Help works before a project is set
 up.
 
 - [Hosts](docs/hosts.md) — what setup writes, and installing as a plugin.
-- [Images](docs/images.md) — templates and categories, several images at once,
-  Pharo versions outside the MCP range.
+- [Images](docs/images.md) — what an image is, templates and categories,
+  starting and stopping, several images at once.
 - [Tools](docs/tools.md) — the advertised surface, finding the rest, the stdio
   bundle, and serving a different MCP.

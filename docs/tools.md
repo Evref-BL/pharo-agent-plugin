@@ -52,24 +52,28 @@ for a script; a tool that fails exits nonzero either way.
 pharo-agent mcp
 ```
 
-Serves the advertised tools over stdio for a host that speaks MCP, scoped to
-this project. Each tool gains an optional `image` argument; everything else is
-the image's own schema.
+Serves the default image's advertised tools over stdio for a host that speaks
+MCP, scoped to this project; `--image <name>` serves another image's. Each
+tool gains an optional `image` argument naming the image a call goes to;
+everything else is the image's own schema.
 
-Five tools of its own come first, listed whether or not an image is running:
-`image_templates`, `image_add`, `image_start`, `image_list` and `image_stop`.
-A chat that has the plugin enabled can take a project from no images to a
-running one without a shell.
+The server's own `image_*` tools come first, listed whether or not an image is
+running, so a chat that has the plugin enabled can take a project from no
+images to a running one without a shell.
 
 ## A different MCP in the image
 
 The tools are the image's, so a project that wants other tools can serve
-another MCP. `mcp.loadScript` in `plexus.json` names a Smalltalk file the
-image files in at start; when that file is there it is what loads, and the
-pinned Pharo MCP release is the fallback for when it is not.
+another MCP. `image create --script <file>` builds the image from its template
+and files that Smalltalk script in, in place of the pinned Pharo MCP release:
 
-What PLexus expects back is a class, not a registration call. Its startup
-script asks the image for a global named `MCP` and sends it four messages:
+```sh
+pharo-agent image create mine --template 'Pharo 14.0 - 64bit (stable)' --script load-my-mcp.st
+```
+
+What PLexus expects back is a class, not a registration call. At every start
+it asks the image for a global named `MCP`, starts a server on a port of the
+system's choosing, and reads back the port it bound:
 
 ```smalltalk
 mcp := (Smalltalk globals at: #MCP) new.
@@ -78,13 +82,13 @@ mcp start.
 endpointPort := mcp port.
 ```
 
-It records the port that came back and forwards calls there, so a server
-built on MCP's core and installed under that name is served like any other,
-with whatever tools it advertises. A load that leaves no `MCP` global fails
-the start and says so.
+It forwards calls to that port, so a server built on MCP's core and installed
+under that name is served like any other, with whatever tools it advertises.
+A script that leaves no `MCP` global fails the create, and says so.
 
-`mcp.loadPolicy` decides whether the load happens at all: `ifMissing`, the
-default, leaves an image that already carries a server alone.
+With `--every-start`, PLexus files the script in again at every start, before
+the server starts, so an image whose script loads a checkout follows that
+checkout. It is read from the path it had when the image was created.
 
 ## Editing source as files
 

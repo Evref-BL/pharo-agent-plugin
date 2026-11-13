@@ -4,11 +4,12 @@ import { templateDirectory as mcpTemplateDirectory } from "@evref-bl/pharo-mcp";
 import { version } from "./gateway.js";
 import { hostList, hostNamed } from "./hosts.js";
 import {
-  createProjectConfig,
+  configPath,
   enclosingProjectRoot,
   pluginDirectory,
-  projectConfigFileName,
-  projectConfigPath,
+  readConfig,
+  scopeFromDirectory,
+  writeConfig,
 } from "./project.js";
 
 // The host guide is the user's file, so our few lines are fenced off inside
@@ -54,11 +55,21 @@ function updateManagedBlock(filePath, content) {
   fs.writeFileSync(filePath, updated);
 }
 
-function writeIfMissing(filePath, content) {
-  if (!fs.existsSync(filePath)) {
-    fs.writeFileSync(filePath, content);
-  }
+// Lines are added, never removed or rewritten, so a user's own entries stay.
+function ensureLines(filePath, lines) {
+  const current = fs.existsSync(filePath) ? fs.readFileSync(filePath, "utf8") : "";
+  const present = new Set(current.split(/\r?\n/).map((line) => line.trim()));
+  const missing = lines.filter((line) => !present.has(line));
+  if (missing.length === 0) return;
+  const separator = current && !current.endsWith("\n") ? "\n" : "";
+  fs.writeFileSync(filePath, `${current}${separator}${missing.join("\n")}\n`);
 }
+
+// The config names this checkout's images and its default image, the mounts
+// show those images, and runtime records the mounts: they describe this
+// workspace, not the repository. A clone or a worktree elsewhere that got the
+// config through git would start, stop and delete this checkout's images.
+const ignoredPaths = ["config.json", "mounts/", "runtime/"];
 
 function assertGeneratedGuideCanBeUpdated(filePath) {
   if (!fs.existsSync(filePath)) return;
@@ -158,20 +169,22 @@ elsewhere.
 
 ## Images
 
-\`plexus.json\` declares this workspace's images. With the \`pharo\` MCP server,
-use the \`image_*\` tools; otherwise:
+With the \`pharo\` MCP server, use the \`image_*\` tools; otherwise:
 
 \`\`\`sh
 pharo-agent image templates
-pharo-agent image add <id> --template '<template name>'
-pharo-agent image start <id>
+pharo-agent image create <name> --template '<template name>'
+pharo-agent image start <name>
 \`\`\`
 
-The first image declared is the default, the main line. An image takes one
-writer, and making one takes seconds: add a new one for each new subject or
+\`image list\` names this project's images and which are running at the
+moment it answers; an image can exit at any time, so list again rather than
+trust an earlier answer. The first image created is the default, the main
+line. An image takes one writer: create a new one for each new subject or
 parallel agent rather than share one, named like a branch
 (\`pretty-print-formatter\`, not \`p15\`). A running image may be another
-session's. Stop an image and remove its declaration when its subject is done.
+session's. \`image stop\` kills an image without saving it, and
+\`image delete\` removes a stopped one whose subject is done.
 
 ## Tools
 
@@ -187,19 +200,29 @@ ${pharoRouting()}
 
 function resolveInitProjectRoot(cwd) {
   const projectRoot = path.resolve(cwd);
-  if (fs.existsSync(projectConfigPath(projectRoot))) {
-    return { projectRoot, createdProjectConfig: false };
+  if (fs.existsSync(configPath(projectRoot))) {
+    return { projectRoot, createdConfig: false };
   }
 
   const enclosing = enclosingProjectRoot(projectRoot);
   if (enclosing) {
     throw new Error(
-      `${projectRoot} is inside the PLexus project at ${enclosing}. `
-        + `Initialize that project root, or remove its ${projectConfigFileName}.`,
+      `${projectRoot} is inside the pharo-agent project at ${enclosing}. `
+        + "Initialize that project root, or remove its .pharo-agent/config.json.",
     );
   }
 
-  return { projectRoot, createdProjectConfig: true };
+  return { projectRoot, createdConfig: true };
+}
+
+// The scope is pinned when init makes the config, so the project keeps its
+// images if its directory is renamed. A refresh changes only the mount root it
+// is given; a config without a scope takes the directory's at every call.
+function initializedConfig(projectRoot, createdConfig, mountRoot) {
+  if (createdConfig) {
+    return { scope: scopeFromDirectory(projectRoot), mountRoot: mountRoot ?? ".pharo-agent/mounts" };
+  }
+  return mountRoot === undefined ? undefined : { ...readConfig(projectRoot), mountRoot };
 }
 
 /** @param {{ host: string, mountRoot?: string, cwd?: string }} options */
@@ -210,24 +233,15 @@ export function initialize({ host, mountRoot, cwd = process.cwd() }) {
   }
   const guideName = hostEntry.guide;
 
-  const { projectRoot, createdProjectConfig } = resolveInitProjectRoot(cwd);
+  const { projectRoot, createdConfig } = resolveInitProjectRoot(cwd);
   const directory = pluginDirectory(projectRoot);
-  const configPath = path.join(directory, "config.json");
   const pharoGuidePath = path.join(projectRoot, "pharo.AGENTS.md");
   assertGeneratedGuideCanBeUpdated(pharoGuidePath);
   assertManagedBlockCanBeUpdated(path.join(projectRoot, guideName));
   const serverConfig = hostEntry.serverConfig && readServerConfig(projectRoot, hostEntry.serverConfig);
-  if (createdProjectConfig) {
-    createProjectConfig(projectRoot);
-  }
-  fs.mkdirSync(directory, { recursive: true });
-  if (!fs.existsSync(configPath) || mountRoot !== undefined) {
-    fs.writeFileSync(
-      configPath,
-      `${JSON.stringify({ mountRoot: mountRoot ?? ".pharo-agent/mounts" }, null, 2)}\n`,
-    );
-  }
-  writeIfMissing(path.join(directory, ".gitignore"), "mounts/\nruntime/\n");
+  const config = initializedConfig(projectRoot, createdConfig, mountRoot);
+  if (config) writeConfig(projectRoot, config);
+  ensureLines(path.join(directory, ".gitignore"), ignoredPaths);
   fs.writeFileSync(pharoGuidePath, pharoGuide());
   const templates = mcpTemplateDirectory();
   copyDirectory(path.join(templates, "pharo-references"), path.join(directory, "references"));
@@ -235,5 +249,5 @@ export function initialize({ host, mountRoot, cwd = process.cwd() }) {
   updateManagedBlock(path.join(projectRoot, guideName), guidance());
   if (serverConfig) writeServerConfig(serverConfig);
 
-  return { projectRoot, guideName, createdProjectConfig, ...(serverConfig && { serverConfig: hostEntry.serverConfig }) };
+  return { projectRoot, guideName, createdConfig, ...(serverConfig && { serverConfig: hostEntry.serverConfig }) };
 }
