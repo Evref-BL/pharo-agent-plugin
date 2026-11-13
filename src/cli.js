@@ -10,8 +10,8 @@ import {
 } from "./images.js";
 import { callImageTool, imageTarget, listImageTools, toolContract } from "./gateway.js";
 import { serveImagesMcp } from "./mcpServer.js";
-import { startAgentImage, stopAgentImage } from "./live.js";
-import { findProjectRoot } from "./project.js";
+import { callsNote, startAgentImage, stopAgentImage } from "./live.js";
+import { findProjectRoot, readConfig } from "./project.js";
 import {
   isToolName,
   resultText,
@@ -208,7 +208,10 @@ async function runImageCommand(projectRoot, subcommand, args) {
   }
   if (subcommand === "start") {
     const { name, options } = parseImageStart(args);
-    return startAgentImage(projectRoot, name, options);
+    const started = await startAgentImage(projectRoot, name, options);
+    const { defaultImage } = readConfig(projectRoot);
+    const note = callsNote(started.name, typeof defaultImage === "string" ? defaultImage : undefined);
+    return { ...started, ...(note ? { note } : {}) };
   }
   if (subcommand === "stop") {
     const { name, all } = parseImageStop(args);

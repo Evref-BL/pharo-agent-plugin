@@ -52,10 +52,29 @@ for a script; a tool that fails exits nonzero either way.
 pharo-agent mcp
 ```
 
-Serves the default image's advertised tools over stdio for a host that speaks
-MCP, scoped to this project; `--image <name>` serves another image's. Each
-tool gains an optional `image` argument naming the image a call goes to;
-everything else is the image's own schema.
+Serves the advertised tools of every running image of the project over stdio,
+for a host that speaks MCP, each name once. Each tool gains an `image`
+argument naming the image a call goes to, one of the images that listed it;
+everything else is the image's own schema, the default image's where two
+images hold the tool. An image that does not list its tools within a few
+seconds is left out of that listing and named on the server's standard error,
+so one busy or hung image does not hold back the others' tools or the
+server's own. The server goes on waiting for it, asking again each time
+PLexus gives up on the listing, for as long as the image runs and the host
+stays connected; once it answers, the server tells the host the list
+changed. An image whose listing fails within those seconds, rather than
+taking longer, is asked again at the next listing.
+
+A call that names no image goes to the default image, so `image` is required
+on a tool the default does not list: it lacks the tool, is not running, or
+does not exist. A call naming no image is refused, with the running images
+named, while the default is not running, and while it does not exist the
+refusal says how to create or choose one. `--image <name>` makes another image
+the default for this server, in all of this and in `image_list`.
+
+`image_start` and `image_stop` tell the host the list changed. An image that
+another session starts, or that exits, tells it nothing, so a host's list is
+as old as its last listing.
 
 The server's own `image_*` tools come first, listed whether or not an image is
 running, so a chat that has the plugin enabled can take a project from no

@@ -25,8 +25,12 @@ export async function listImageTemplates(projectRoot) {
   return { templates: await projectImages(projectRoot).templates() };
 }
 
-export async function listImages(projectRoot) {
-  const { defaultImage } = readConfig(projectRoot);
+/**
+ * @param {string} projectRoot
+ * @param {unknown} [defaultImage] the image a call naming none goes to: the
+ *   project's, unless a server was started with another
+ */
+export async function listImages(projectRoot, defaultImage = readConfig(projectRoot).defaultImage) {
   const rows = await projectImages(projectRoot).list();
   return {
     ...(typeof defaultImage === "string" ? { defaultImage } : {}),

@@ -35,6 +35,8 @@ const scopePattern = /^[A-Za-z0-9][A-Za-z0-9._]{0,63}$/;
  *   running?: { pids: number[], display?: string, endpoint?: { url: string, pid?: number }, endpointProblem?: string },
  *   startFails?: string,
  *   unreachable?: boolean,
+ *   hangs?: boolean,
+ *   busy?: boolean,
  *   tools?: { name: string, description?: string, inputSchema?: Record<string, any> }[],
  *   answers?: Answer[],
  * }} FakeImage
@@ -44,7 +46,11 @@ const scopePattern = /^[A-Za-z0-9][A-Za-z0-9._]{0,63}$/;
  *   images: Record<string, FakeImage>,
  *   calls: Record<string, any>[],
  *   started: number,
+ *   timeoutMs?: number,
  * }} World
+ *
+ * `timeoutMs` is how long PLexus waits on one request when its caller names
+ * no timeout: a minute, as PLexus's own, unless a test shortens it.
  */
 
 export const defaultTemplates = [
@@ -79,16 +85,21 @@ export function readWorld() {
   return JSON.parse(fs.readFileSync(worldPath(), "utf8"));
 }
 
+// Renamed into place, so that a process reading the store while another
+// writes it never reads half of it.
 /** @param {World} world */
 function writeWorld(world) {
-  fs.writeFileSync(worldPath(), `${JSON.stringify(world, null, 2)}\n`);
+  const file = worldPath();
+  const written = `${file}.${process.pid}`;
+  fs.writeFileSync(written, `${JSON.stringify(world, null, 2)}\n`);
+  fs.renameSync(written, file);
 }
 
 /**
  * A fresh store in a temporary directory, which this process and those it
  * spawns use from now on.
  *
- * @param {{ templates?: World["templates"], images?: Record<string, FakeImage> }} [world]
+ * @param {{ templates?: World["templates"], images?: Record<string, FakeImage>, timeoutMs?: number }} [world]
  */
 export function useFakePlexus(world = {}) {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), "pharo-agent-fake-plexus-"));
@@ -114,6 +125,21 @@ export function runningImage(port, overrides = {}) {
     running: { pids: [port + 50000], display: "headless", endpoint: { url: `http://127.0.0.1:${port}/`, pid: port + 50000 } },
     ...overrides,
   });
+}
+
+/**
+ * Changes images in the store while the processes under test run, as the
+ * images themselves would: a long evaluation ending, say. In one write, so
+ * that no write of theirs falls between two of these and undoes the first.
+ *
+ * @param {Record<string, FakeImage>} changes by disk name
+ */
+export function changeImages(changes) {
+  const world = readWorld();
+  for (const [diskName, change] of Object.entries(changes)) {
+    world.images[diskName] = { ...world.images[diskName], ...change };
+  }
+  writeWorld(world);
 }
 
 /** The calls of one kind the fake was given, in order. */
@@ -325,12 +351,70 @@ function answering(world, endpoint) {
   return found;
 }
 
-/** @param {{ url: string }} endpoint */
-export async function listTools(endpoint) {
+/**
+ * An image that `hangs` accepts the connection and never answers, so the
+ * listing fails only once PLexus gives up: on its initialize, then on its
+ * tools/list, each after the timeout, the store's unless the caller names
+ * one. The timer holds nothing open, so a server whose input has ended exits
+ * rather than wait on it.
+ *
+ * An image that is `busy` answers nothing until a test makes it not busy,
+ * as an image evaluating something long answers once it is done, and then
+ * lists its tools. PLexus gives up on it as on one that hangs, after twice
+ * the timeout: it goes on without a session when its initialize times out,
+ * and a tools/list sent then is answered once the image is done.
+ *
+ * A listing is recorded when it is asked for, `listTools`, and when it ends,
+ * `listToolsEnded`, answered or not: written before the caller hears of it,
+ * so that whatever the caller does on hearing has been done by the time it
+ * next reads its input.
+ *
+ * @param {{ url: string }} endpoint
+ * @param {{ timeoutMs?: number }} [options]
+ */
+export async function listTools(endpoint, options = {}) {
   const world = readWorld();
   world.calls.push({ op: "listTools", url: endpoint.url });
   writeWorld(world);
-  return answering(world, endpoint)[1].tools ?? [];
+  try {
+    const tools = await listing(world, endpoint, options.timeoutMs ?? world.timeoutMs ?? 60_000);
+    ended(endpoint, { answered: true });
+    return tools;
+  } catch (error) {
+    ended(endpoint, { answered: false, error: error instanceof Error ? error.message : String(error) });
+    throw error;
+  }
+}
+
+/**
+ * @param {{ url: string }} endpoint
+ * @param {Record<string, unknown>} outcome
+ */
+function ended(endpoint, outcome) {
+  const world = readWorld();
+  world.calls.push({ op: "listToolsEnded", url: endpoint.url, ...outcome });
+  writeWorld(world);
+}
+
+/**
+ * @param {World} world
+ * @param {{ url: string }} endpoint
+ * @param {number} timeoutMs
+ */
+async function listing(world, endpoint, timeoutMs) {
+  const [, image] = answering(world, endpoint);
+  if (image.hangs) {
+    await new Promise((resolve) => setTimeout(resolve, 2 * timeoutMs).unref());
+    throw new Error(`MCP request to ${endpoint.url} timed out after ${timeoutMs} ms`);
+  }
+  const givingUp = Date.now() + 2 * timeoutMs;
+  let answeringImage = image;
+  while (answeringImage.busy) {
+    if (Date.now() >= givingUp) throw new Error(`MCP request to ${endpoint.url} timed out after ${timeoutMs} ms`);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    [, answeringImage] = answering(readWorld(), endpoint);
+  }
+  return answeringImage.tools ?? [];
 }
 
 /**

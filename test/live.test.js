@@ -242,10 +242,50 @@ test("a call reaches the endpoint PLexus gives for the named image", async () =>
   }, { config: { defaultImage: "dev" } });
 });
 
-test("a call to an image that is not running is PLexus's refusal", async () => {
+test("a call to an image that is not running is PLexus's refusal, with how to start it", async () => {
   await inProject(async (root) => {
-    await assert.rejects(() => imageTarget(root, undefined), (/** @type {any} */ error) => error.code === "not-running");
+    await assert.rejects(
+      () => imageTarget(root, undefined),
+      (/** @type {any} */ error) => error.code === "not-running"
+        && /^Image dev is not running\. Start it with image_start/.test(error.message),
+    );
   }, { images: { "proj-dev": pinnedImage() } }, { config: { defaultImage: "dev" } });
+});
+
+// Not running, and start it, sent an agent to a start refused for want of
+// an image.
+test("a default image that does not exist is refused with a code of its own", async () => {
+  await inProject(async (root) => {
+    await assert.rejects(
+      () => imageTarget(root, undefined),
+      (/** @type {any} */ error) => error.code === "no-such-default"
+        && error.message === "No image is named, and the default image dev does not exist. Create it with"
+          + " image_create, or choose another default with pharo-agent image use <name>.",
+    );
+  }, { images: { "proj-ci": pinnedImage() } }, { config: { defaultImage: "dev" } });
+});
+
+// pharo-agent image use changes the project's default, not the one a server
+// was started with.
+test("a default a server was started with, that does not exist, is to be created", async () => {
+  await inProject(async (root) => {
+    await assert.rejects(
+      () => imageTarget(root, undefined, { defaultImage: "ci" }),
+      (/** @type {any} */ error) => error.code === "no-such-default"
+        && error.message === "No image is named, and the default image ci does not exist. Running now: dev."
+          + " Name one with image, or create it with image_create.",
+    );
+  }, { images: { "proj-dev": runningImage(41000) } }, { config: { defaultImage: "dev" } });
+});
+
+// It runs: saying it does not, and offering to start it, would send an agent
+// to a start that is refused.
+test("a default image running without an endpoint is PLexus's refusal, whatever else runs", async () => {
+  await inProject(async (root) => {
+    await assert.rejects(() => imageTarget(root, undefined), (/** @type {any} */ error) => error.code === "no-endpoint");
+  }, {
+    images: { "proj-dev": pinnedImage({ running: { pids: [123] } }), "proj-ci": runningImage(42000) },
+  }, { config: { defaultImage: "dev" } });
 });
 
 test("a -32601 from an image made with another pin names the pin", async () => {

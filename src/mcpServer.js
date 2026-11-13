@@ -8,12 +8,14 @@ import {
   callImageTool,
   imageTarget,
   listImageTools,
+  missingDefault,
   toolResult,
   version,
   withImageSelector,
 } from "./gateway.js";
-import { createImage, deleteImage, listImageTemplates, listImages } from "./images.js";
-import { startAgentImage, stopAgentImage } from "./live.js";
+import { createImage, deleteImage, listImageTemplates, listImages, projectImages } from "./images.js";
+import { callsNote, startAgentImage, stopAgentImage } from "./live.js";
+import { readConfig } from "./project.js";
 
 // The host loads only tool names and these instructions at session start and
 // defers the rest, so this is what decides whether Pharo tools are searched
@@ -125,27 +127,112 @@ const projectTools = [
   },
 ];
 
+const projectToolNames = new Set(projectTools.map((tool) => tool.name));
+
+/** The image a call that names none goes to: the server's, or the project's. */
+function serverDefaultImage(projectRoot, selectedImage) {
+  if (selectedImage !== undefined) return selectedImage;
+  const { defaultImage } = readConfig(projectRoot);
+  return typeof defaultImage === "string" ? defaultImage : undefined;
+}
+
+// How long one image's listing may hold back this server's tools/list. A
+// host waits on the whole list, this server's image_* tools with it, at the
+// start of a session and after every image_start and image_stop, and an
+// image that is evaluating something long does not answer until it is done:
+// PLexus alone would wait a minute on each of its two requests. An image
+// that answers lists its tools in well under a second, 45 to 78 ms measured
+// through this server, so five seconds leaves it sixty times that and is
+// still a wait a person sits through. An image slower than that is left out
+// of this listing and waited on, asked again while it runs each time PLexus
+// gives up on it (`followLate`): once it answers, `listChanged` tells the
+// host to list again, once for however many images this listing left out,
+// since the listing that follows asks them all.
+export const listingTimeoutMs = 5_000;
+
+// The tools of every running image of the project, each name once, as PLexus's
+// own server lists them. Listing only the default image's left an agent that
+// had started another one, with the default stopped, without a single tool.
 // Resolved per request rather than once at startup. A host starts this server
 // when its session starts, which is before anyone has started an image, so
 // resolving then meant the server died on its first line.
-async function selectedImageTools(projectRoot, selected) {
-  let target;
+/**
+ * @param {string} projectRoot
+ * @param {string | undefined} selectedImage
+ * @param {() => void} listChanged
+ * @param {AbortSignal} hostLeft
+ */
+async function runningImageTools(projectRoot, selectedImage, listChanged, hostLeft) {
+  let defaultImage;
+  let images;
+  let rows;
   try {
-    target = await imageTarget(projectRoot, selected);
-  } catch {
-    // No default image, or it is not running. It contributes no tools yet,
-    // and the image tools say how to change that.
-    return [];
-  }
-  try {
-    return (await listImageTools(target)).map((tool) => withImageSelector(tool, target.name));
+    defaultImage = serverDefaultImage(projectRoot, selectedImage);
+    images = projectImages(projectRoot);
+    rows = await images.list();
   } catch (error) {
-    // A running image may still not answer: it may be hung. Failing the
-    // whole list would take image_stop with it, and with it the one way out.
-    // stderr reaches the host's log.
-    console.error(`pharo-agent: image ${target.name} listed no tools: ${error.message}`);
+    console.error(`pharo-agent: no image tools listed: ${error.message}`);
     return [];
   }
+  // The default's first: where two images hold a tool, the schema listed is
+  // the one a call naming no image meets.
+  const answering = rows.flatMap((row) => (row.endpoint ? [{ name: row.name, endpoint: row.endpoint }] : []));
+  const ordered = [
+    ...answering.filter((row) => row.name === defaultImage),
+    ...answering.filter((row) => row.name !== defaultImage),
+  ];
+  let changed = false;
+  const answeredLate = () => {
+    if (changed) return;
+    changed = true;
+    listChanged();
+  };
+  const listings = await Promise.allSettled(
+    ordered.map((row) => listImageTools(
+      { name: row.name, images, endpoint: row.endpoint },
+      { timeoutMs: listingTimeoutMs, answeredLate, signal: hostLeft },
+    )),
+  );
+  /** @type {Map<string, { tool: any, holders: string[] }>} */
+  const held = new Map();
+  /** @type {Set<string>} */
+  const listed = new Set();
+  listings.forEach((listing, index) => {
+    const { name } = ordered[index];
+    if (listing.status === "rejected") {
+      // A running image may still not answer: it may be busy or hung.
+      // Failing the whole list would take image_stop with it, and with it
+      // the one way out, and offering it in a tool's image would send calls
+      // to an image just seen not to answer. stderr reaches the host's log.
+      console.error(`pharo-agent: image ${name} listed no tools: ${listing.reason?.message ?? listing.reason}`);
+      return;
+    }
+    listed.add(name);
+    for (const tool of listing.value) {
+      if (projectToolNames.has(tool.name)) continue;
+      const entry = held.get(tool.name);
+      if (!entry) held.set(tool.name, { tool, holders: [name] });
+      else if (!entry.holders.includes(name)) entry.holders.push(name);
+    }
+  });
+  const absence = defaultAbsence(rows, listed, defaultImage, selectedImage !== undefined);
+  return [...held.values()].map(({ tool, holders }) => withImageSelector(tool, holders, defaultImage, absence));
+}
+
+/**
+ * Why the default image lists no tool at all, or nothing when it listed its
+ * own: each tool then says whether it is among them.
+ *
+ * @param {{ name: string, running: boolean }[]} rows
+ * @param {Set<string>} listed the images whose listing answered
+ * @param {string | undefined} defaultImage
+ * @param {boolean} chosen whether this server was started with it
+ */
+function defaultAbsence(rows, listed, defaultImage, chosen) {
+  if (defaultImage === undefined || listed.has(defaultImage)) return undefined;
+  const own = rows.find((row) => row.name === defaultImage);
+  if (own === undefined) return missingDefault(chosen);
+  return own.running ? "does not answer" : "is not running";
 }
 
 // A schema is a description, not a guard: nothing between the model and here
@@ -166,13 +253,18 @@ function optionalString(argumentsValue, key) {
 
 /**
  * @param {() => string} resolveProjectRoot
- * @param {string} [selectedImage] the image whose tools are served, instead of the default
+ * @param {string} [selectedImage] the image a call naming none goes to, instead of the default
  */
 export async function serveImagesMcp(resolveProjectRoot, selectedImage) {
   const server = new Server(
     { name: "pharo-agent", version },
     { capabilities: { tools: { listChanged: true } }, instructions: serverInstructions },
   );
+
+  // A host leaves by closing the server's input. An image still waited on
+  // for answering late then has nobody to tell, and is asked nothing more.
+  const hostLeft = new AbortController();
+  process.stdin.once("end", () => hostLeft.abort());
 
   server.setRequestHandler(ListToolsRequestSchema, async () => {
     let projectRoot;
@@ -183,8 +275,13 @@ export async function serveImagesMcp(resolveProjectRoot, selectedImage) {
       // nothing, so the host has a server that works and a call can say why.
       return { tools: projectTools };
     }
+    // A host gone by the time an image answers is nobody to tell.
+    const listChanged = () => { server.sendToolListChanged().catch(() => {}); };
     return {
-      tools: [...projectTools, ...(await selectedImageTools(projectRoot, selectedImage))],
+      tools: [
+        ...projectTools,
+        ...(await runningImageTools(projectRoot, selectedImage, listChanged, hostLeft.signal)),
+      ],
     };
   });
 
@@ -210,7 +307,7 @@ export async function serveImagesMcp(resolveProjectRoot, selectedImage) {
       });
     }
     if (tool === "image_list") {
-      return toolResult({ ok: true, ...(await listImages(projectRoot)) });
+      return toolResult({ ok: true, ...(await listImages(projectRoot, serverDefaultImage(projectRoot, selectedImage))) });
     }
     if (tool === "image_start") {
       const display = optionalString(argumentsValue, "display");
@@ -223,7 +320,8 @@ export async function serveImagesMcp(resolveProjectRoot, selectedImage) {
         display ? { display } : {},
       );
       await server.sendToolListChanged();
-      return toolResult({ ok: true, ...started });
+      const note = callsNote(started.name, serverDefaultImage(projectRoot, selectedImage));
+      return toolResult({ ok: true, ...started, ...(note ? { note } : {}) });
     }
     if (tool === "image_stop") {
       // A name given with all reaches stopAgentImage, which refuses the pair,
@@ -244,7 +342,11 @@ export async function serveImagesMcp(resolveProjectRoot, selectedImage) {
     // would hide tools that tool_search just found, and the image's own error
     // is the better answer for a name nothing holds.
     const { image, ...imageArguments } = argumentsValue;
-    const target = await imageTarget(projectRoot, typeof image === "string" ? image : selectedImage);
+    const target = await imageTarget(
+      projectRoot,
+      typeof image === "string" ? image : undefined,
+      { defaultImage: selectedImage },
+    );
     return toolResult(await callImageTool(target, tool, imageArguments));
   });
 
