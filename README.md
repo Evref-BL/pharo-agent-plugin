@@ -37,9 +37,9 @@ tested together, and gives the agent one command surface over the lot.
   Its daemon is downloaded for you. Where a projection cannot mount, the image
   starts with its Pharo tools and a warning saying why, rather than failing.
 
-The image tools cover Pharo 12 to 15. Creating an image on another version
-fails with the error loading them gave, unless a load script of your own
-brings tools in another way.
+On a Pharo version the pinned MCP does not load on, creating an image fails
+with the load's own error, unless a load script of your own brings the tools
+in another way.
 
 ## Setup
 
@@ -102,9 +102,9 @@ Upgrade the plugin the way you installed it, then run the setup command again
 in the project, naming the same host. That rewrites the generated guide and
 the files copied with it, from the templates the new version pins.
 
-Images, runtime state and settings are kept, as long as you omit
-`--mount-root`, and so is anything outside the block the plugin marks as its
-own. Generated and copied files are overwritten, so keep project-specific
+Images, runtime state and settings are kept, and so is anything outside the
+block the plugin marks as its own; `--mount-root` changes only the mount root.
+Generated and copied files are overwritten, so keep project-specific
 instructions out of them. Refreshing a project upgrades neither the installed
 plugin nor the code inside a running image; [Images](docs/images.md) covers
 the image side.
