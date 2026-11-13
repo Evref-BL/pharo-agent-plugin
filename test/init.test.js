@@ -7,6 +7,7 @@ import { templateDirectory as mcpTemplateDirectory } from "@evref-bl/pharo-mcp";
 import { initialize } from "../src/init.js";
 import { main } from "../src/cli.js";
 import { supportedHosts } from "../src/hosts.js";
+import { scopeFromDirectory } from "../src/project.js";
 
 for (const host of supportedHosts) {
   test(`init refreshes ${host.name} assets while preserving project and runtime state`, () => {
@@ -20,18 +21,15 @@ for (const host of supportedHosts) {
       const configPath = path.join(root, ".pharo-agent", "config.json");
       const config = JSON.parse(fs.readFileSync(configPath, "utf8"));
       fs.writeFileSync(configPath, JSON.stringify({ ...config, defaultImage: "dev" }));
-      const projectPath = path.join(root, "plexus.json");
-      const project = JSON.parse(fs.readFileSync(projectPath, "utf8"));
-      fs.writeFileSync(projectPath, JSON.stringify({ ...project, images: [{ id: "dev" }] }));
-      const runtimePath = path.join(root, ".pharo-agent", "runtime", "running.json");
+      const runtimePath = path.join(root, ".pharo-agent", "runtime", "projections.json");
       fs.mkdirSync(path.dirname(runtimePath), { recursive: true });
-      fs.writeFileSync(runtimePath, '{"images":{"dev":{"imageId":"dev"}}}');
+      fs.writeFileSync(runtimePath, '{"dev":{"mountPath":"/m/dev","projectionPort":1,"pifsRelease":"v0.1.0"}}');
       const mountPath = path.join(root, ".custom-mounts", "dev", "source.txt");
       fs.mkdirSync(path.dirname(mountPath), { recursive: true });
       fs.writeFileSync(mountPath, "Existing projected source fixture");
       const localNote = path.join(root, ".pharo-agent", "local.md");
       fs.writeFileSync(localNote, "User-owned notes");
-      const preserved = [hostGuide, configPath, projectPath, runtimePath, mountPath, localNote]
+      const preserved = [hostGuide, configPath, runtimePath, mountPath, localNote]
         .map((file) => [file, fs.readFileSync(file, "utf8")]);
 
       const generated = [
@@ -82,13 +80,13 @@ function temporaryDirectory() {
   return fs.mkdtempSync(path.join(os.tmpdir(), "pharo-agent-"));
 }
 
+// A directory init has not seen yet: the project is what init makes of it.
 function temporaryProject() {
-  const root = temporaryDirectory();
-  fs.writeFileSync(
-    path.join(root, "plexus.json"),
-    `${JSON.stringify({ id: "existing", name: "existing", images: [] })}\n`,
-  );
-  return root;
+  return temporaryDirectory();
+}
+
+function readPluginConfig(root) {
+  return JSON.parse(fs.readFileSync(path.join(root, ".pharo-agent", "config.json"), "utf8"));
 }
 
 test("init adds a conditional Codex block without replacing existing guidance", () => {
@@ -103,10 +101,7 @@ test("init adds a conditional Codex block without replacing existing guidance", 
     assert.equal(result.guideName, "AGENTS.md");
     assert.match(fs.readFileSync(agents, "utf8"), /# Existing guidance/);
     assert.match(fs.readFileSync(agents, "utf8"), /When the task uses Pharo, read `pharo\.AGENTS\.md`/);
-    assert.deepEqual(
-      JSON.parse(fs.readFileSync(path.join(root, ".pharo-agent", "config.json"), "utf8")),
-      { mountRoot: ".pharo-agent/mounts" },
-    );
+    assert.deepEqual(readPluginConfig(root), { scope: scopeFromDirectory(root), mountRoot: ".pharo-agent/mounts" });
     assert.ok(fs.existsSync(path.join(root, ".pharo-agent", "skills", "pharo-project-load", "SKILL.md")));
     for (const name of referenceNames()) {
       assert.equal(
@@ -176,18 +171,15 @@ test("init does not create assets when the selected host guide has an incomplete
 test("init changes the mount root only when explicitly requested", () => {
   const root = temporaryProject();
   try {
+    const scope = scopeFromDirectory(root);
     initialize({ host: "codex", cwd: root, mountRoot: ".mounts" });
     initialize({ host: "codex", cwd: root });
-    assert.deepEqual(
-      JSON.parse(fs.readFileSync(path.join(root, ".pharo-agent", "config.json"), "utf8")),
-      { mountRoot: ".mounts" },
-    );
+    assert.deepEqual(readPluginConfig(root), { scope, mountRoot: ".mounts" });
 
+    const configPath = path.join(root, ".pharo-agent", "config.json");
+    fs.writeFileSync(configPath, JSON.stringify({ ...readPluginConfig(root), defaultImage: "dev" }));
     initialize({ host: "codex", cwd: root, mountRoot: ".other-mounts" });
-    assert.deepEqual(
-      JSON.parse(fs.readFileSync(path.join(root, ".pharo-agent", "config.json"), "utf8")),
-      { mountRoot: ".other-mounts" },
-    );
+    assert.deepEqual(readPluginConfig(root), { scope, mountRoot: ".other-mounts", defaultImage: "dev" });
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }
@@ -222,53 +214,66 @@ test("a guide fenced by the preceding release is adopted and unfenced", () => {
   }
 });
 
-test("help does not require a PLexus project", async () => {
+test("help does not require a project", async () => {
   await main(["--help"]);
 });
 
-test("init creates an empty PLexus project config in the current directory", () => {
+test("init makes the directory a project, with the scope its name gives", () => {
   const root = temporaryDirectory();
   try {
     const result = initialize({ host: "claude", cwd: root });
 
     assert.equal(result.projectRoot, root);
-    assert.equal(result.createdProjectConfig, true);
-    const config = JSON.parse(
-      fs.readFileSync(path.join(root, "plexus.json"), "utf8"),
-    );
-    assert.deepEqual(config.images, []);
-    assert.equal(config.name, path.basename(root));
-    assert.ok(config.id);
+    assert.equal(result.createdConfig, true);
+    assert.deepEqual(readPluginConfig(root), { scope: scopeFromDirectory(root), mountRoot: ".pharo-agent/mounts" });
+    assert.equal(fs.existsSync(path.join(root, "plexus.json")), false);
     assert.ok(fs.existsSync(path.join(root, "CLAUDE.md")));
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }
 });
 
-test("init keeps an existing PLexus project config", () => {
-  const root = temporaryProject();
+test("init pins the scope of a project that has none, and keeps one it has", () => {
+  const root = temporaryDirectory();
   try {
+    const configPath = path.join(root, ".pharo-agent", "config.json");
+    fs.mkdirSync(path.dirname(configPath));
+    fs.writeFileSync(configPath, JSON.stringify({ mountRoot: ".m", defaultImage: "dev" }));
     const result = initialize({ host: "codex", cwd: root });
 
-    assert.equal(result.createdProjectConfig, false);
-    assert.equal(
-      JSON.parse(fs.readFileSync(path.join(root, "plexus.json"), "utf8")).id,
-      "existing",
-    );
+    assert.equal(result.createdConfig, false);
+    assert.deepEqual(readPluginConfig(root), { mountRoot: ".m", defaultImage: "dev", scope: scopeFromDirectory(root) });
+
+    fs.writeFileSync(configPath, JSON.stringify({ scope: "pinned", mountRoot: ".m" }));
+    initialize({ host: "codex", cwd: root });
+    assert.deepEqual(readPluginConfig(root), { scope: "pinned", mountRoot: ".m" });
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }
 });
 
-test("init refuses to initialize inside an enclosing PLexus project", () => {
+test("init refuses to initialize inside an enclosing project", () => {
   const root = temporaryProject();
   const nested = path.join(root, "nested");
   fs.mkdirSync(nested);
   try {
-    assert.throws(() => initialize({ host: "codex", cwd: nested }), /is inside the PLexus project at/);
-    assert.equal(fs.existsSync(path.join(nested, "plexus.json")), false);
-    assert.equal(fs.existsSync(path.join(root, "AGENTS.md")), false);
+    initialize({ host: "codex", cwd: root });
+    assert.throws(() => initialize({ host: "codex", cwd: nested }), /is inside the pharo-agent project at/);
+    assert.equal(fs.existsSync(path.join(nested, "AGENTS.md")), false);
     assert.equal(fs.existsSync(path.join(nested, ".pharo-agent")), false);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("the Pharo guide creates images and names no declaration file", () => {
+  const root = temporaryProject();
+  try {
+    initialize({ host: "claude", cwd: root });
+    const guide = fs.readFileSync(path.join(root, "pharo.AGENTS.md"), "utf8");
+
+    assert.match(guide, /pharo-agent image create <name> --template/);
+    assert.doesNotMatch(guide, /plexus\.json|image add|\bdeclar/);
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }

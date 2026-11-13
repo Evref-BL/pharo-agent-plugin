@@ -1,115 +1,78 @@
-import { declareProjectImage, removeProjectImage } from "@evref-bl/plexus";
-import { configuredImages } from "./project.js";
-import {
-  defaultImageId,
-  notConfigured,
-  readConfig,
-  readRunningImages,
-  recordedImageIsRunning,
-  writeConfig,
-} from "./runtime.js";
+import { Images, defaultPharoMcpVersion } from "@evref-bl/plexus";
+import { projectScope, readConfig, writeConfig } from "./project.js";
+import { forgetProjection, readProjections } from "./runtime.js";
 
-export const defaultLoadScript = "pharo/load-mcp.st";
-
-function assertNotRunning(projectRoot, imageId, action) {
-  if (readRunningImages(projectRoot)[imageId]) {
-    throw new Error(
-      `Image ${imageId} is running. Run pharo-agent image stop ${imageId} before ${action}.`,
-    );
-  }
+/** PLexus's images, seen through this project's scope. */
+export function projectImages(projectRoot) {
+  return new Images({ scope: projectScope(projectRoot) });
 }
 
-export function listImages(projectRoot) {
-  const configured = configuredImages(projectRoot);
-  const running = readRunningImages(projectRoot);
-  let defaultImage;
-  try {
-    defaultImage = defaultImageId(projectRoot);
-  } catch {
-    // Several declared and none chosen. The list is how a caller finds that
-    // out, so it answers rather than raising the question back at them.
-    defaultImage = undefined;
-  }
+/**
+ * An image made from the pinned MCP keeps the MCP it was made with, so once
+ * the pin moves its tools can differ from the ones the current guidance
+ * describes. Only a pin can be compared: a script's MCP is its author's.
+ *
+ * @param {{ name: string, mcp?: { source: "pin", version: string } | { source: "script", script: string } }} row
+ */
+export function olderMcpWarning(row) {
+  if (row.mcp?.source !== "pin" || row.mcp.version === defaultPharoMcpVersion) return undefined;
+  return `Image ${row.name} holds Pharo MCP ${row.mcp.version}, and images are created with`
+    + ` ${defaultPharoMcpVersion} now, so its tools may differ from the current ones.`
+    + " Recreating it gives it the current MCP.";
+}
+
+export async function listImageTemplates(projectRoot) {
+  return { templates: await projectImages(projectRoot).templates() };
+}
+
+export async function listImages(projectRoot) {
+  const { defaultImage } = readConfig(projectRoot);
+  const projections = readProjections(projectRoot);
+  const rows = await projectImages(projectRoot).list();
   return {
-    ...(defaultImage ? { defaultImage } : {}),
-    images: configured.map((image) => {
-      const record = running[image.id];
-      // A record says this project started the image, not that it is still
-      // there. One that crashed or was closed keeps its record until it is
-      // started or stopped again, and its route and mount lead nowhere.
-      const alive = record !== undefined && recordedImageIsRunning(record);
-      // The record repeats the id it is keyed by; everything else in it is
-      // runtime detail this list carries when the image is running.
-      const { imageId: _keyed, ...runtime } = alive ? record : {};
+    ...(typeof defaultImage === "string" ? { defaultImage } : {}),
+    images: rows.map((row) => {
+      const projection = row.running ? projections[row.name] : undefined;
+      const warning = olderMcpWarning(row);
       return {
-        id: image.id,
-        imageName: image.imageName,
-        isDefault: image.id === defaultImage,
-        running: alive,
-        ...(record !== undefined && !alive ? { exited: true } : {}),
-        ...runtime,
-        templateName: image.create?.templateName,
-        templateCategory: image.create?.templateCategory,
+        ...row,
+        isDefault: row.name === defaultImage,
+        ...(projection ? { mountPath: projection.mountPath, projectionPort: projection.projectionPort } : {}),
+        ...(warning ? { warning } : {}),
       };
     }),
   };
 }
 
 /**
- * PLexus owns `plexus.json`, so PLexus writes it. This package chooses what
- * to declare — the load script that puts the pinned MCP in the image — and
- * leaves the schema, the name template, the defaults and the validation to
- * the package that reads them back.
- *
- * @param {{ id: string, template: string, category?: string, profile?: string }} request
+ * @param {string} projectRoot
+ * @param {string} name
+ * @param {{ template: string, category?: string, script?: string, everyStart?: boolean }} options
  */
-export function addImage(projectRoot, request) {
-  const { id, template, category, profile } = request;
-  const declaredBefore = configuredImages(projectRoot).length;
-  const config = declareProjectImage(projectRoot, {
-    id,
-    templateName: template,
-    ...(category ? { templateCategory: category } : {}),
-    ...(profile ? { profileId: profile } : {}),
-    loadScript: defaultLoadScript,
-  });
-  const declared = config.images.find((image) => image.id === id);
-  if (!declared) {
-    throw new Error(`PLexus declared image ${id} but did not record it.`);
-  }
-
-  const pluginConfig = readConfig(projectRoot);
-  const isDefault = pluginConfig.defaultImage === undefined && declaredBefore === 0;
+export async function createImage(projectRoot, name, options) {
+  const created = await projectImages(projectRoot).create(name, options);
+  const config = readConfig(projectRoot);
+  const isDefault = config.defaultImage === undefined;
   if (isDefault) {
-    writeConfig(projectRoot, { ...pluginConfig, defaultImage: id });
+    writeConfig(projectRoot, { ...config, defaultImage: name });
   }
-  return {
-    id,
-    imageName: declared.imageName,
-    isDefault,
-    templateName: template,
-    ...(category ? { templateCategory: category } : {}),
-  };
+  return { ...created, isDefault };
 }
 
-export function useImage(projectRoot, id) {
-  if (!configuredImages(projectRoot).some((image) => image.id === id)) {
-    throw notConfigured(projectRoot, id);
-  }
-  writeConfig(projectRoot, { ...readConfig(projectRoot), defaultImage: id });
-  return { defaultImage: id };
+export async function useImage(projectRoot, name) {
+  // Listing it is how PLexus says it exists; a default naming nothing would
+  // only fail later, on whichever command first leans on it.
+  await projectImages(projectRoot).list(name);
+  writeConfig(projectRoot, { ...readConfig(projectRoot), defaultImage: name });
+  return { defaultImage: name };
 }
 
-export function removeImage(projectRoot, id) {
-  if (!configuredImages(projectRoot).some((image) => image.id === id)) {
-    throw notConfigured(projectRoot, id);
-  }
-  assertNotRunning(projectRoot, id, "removing it");
-  removeProjectImage(projectRoot, id);
-  const pluginConfig = readConfig(projectRoot);
-  if (pluginConfig.defaultImage === id) {
-    const { defaultImage: _removed, ...rest } = pluginConfig;
+export async function deleteImage(projectRoot, name) {
+  const deleted = await projectImages(projectRoot).delete(name);
+  forgetProjection(projectRoot, name);
+  const { defaultImage, ...rest } = readConfig(projectRoot);
+  if (defaultImage === name) {
     writeConfig(projectRoot, rest);
   }
-  return { removedImageId: id };
+  return { ...deleted, ...(defaultImage === name ? { clearedDefault: true } : {}) };
 }

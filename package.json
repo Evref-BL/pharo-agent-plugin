@@ -29,7 +29,7 @@
   "scripts": {
     "check": "tsc --noEmit",
     "package:check": "npm pack --dry-run",
-    "test": "node --test"
+    "test": "node --import ./test/support/plexus-hook.js --test test/*.test.js"
   },
   "dependencies": {
     "@evref-bl/pharo-mcp": "3.6.0",

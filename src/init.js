@@ -4,11 +4,12 @@ import { templateDirectory as mcpTemplateDirectory } from "@evref-bl/pharo-mcp";
 import { version } from "./gateway.js";
 import { hostList, hostNamed } from "./hosts.js";
 import {
-  createProjectConfig,
+  configPath,
   enclosingProjectRoot,
   pluginDirectory,
-  projectConfigFileName,
-  projectConfigPath,
+  readConfig,
+  scopeFromDirectory,
+  writeConfig,
 } from "./project.js";
 
 // The host guide is the user's file, so our few lines are fenced off inside
@@ -158,20 +159,22 @@ elsewhere.
 
 ## Images
 
-\`plexus.json\` declares this workspace's images. With the \`pharo\` MCP server,
-use the \`image_*\` tools; otherwise:
+With the \`pharo\` MCP server, use the \`image_*\` tools; otherwise:
 
 \`\`\`sh
 pharo-agent image templates
-pharo-agent image add <id> --template '<template name>'
-pharo-agent image start <id>
+pharo-agent image create <name> --template '<template name>'
+pharo-agent image start <name>
 \`\`\`
 
-The first image declared is the default, the main line. An image takes one
-writer, and making one takes seconds: add a new one for each new subject or
+\`image list\` names this project's images and which are running at the
+moment it answers; an image can exit at any time, so list again rather than
+trust an earlier answer. The first image created is the default, the main
+line. An image takes one writer: create a new one for each new subject or
 parallel agent rather than share one, named like a branch
 (\`pretty-print-formatter\`, not \`p15\`). A running image may be another
-session's. Stop an image and remove its declaration when its subject is done.
+session's. \`image stop\` kills an image without saving it, and
+\`image delete\` removes a stopped one whose subject is done.
 
 ## Tools
 
@@ -187,19 +190,31 @@ ${pharoRouting()}
 
 function resolveInitProjectRoot(cwd) {
   const projectRoot = path.resolve(cwd);
-  if (fs.existsSync(projectConfigPath(projectRoot))) {
-    return { projectRoot, createdProjectConfig: false };
+  if (fs.existsSync(configPath(projectRoot))) {
+    return { projectRoot, createdConfig: false };
   }
 
   const enclosing = enclosingProjectRoot(projectRoot);
   if (enclosing) {
     throw new Error(
-      `${projectRoot} is inside the PLexus project at ${enclosing}. `
-        + `Initialize that project root, or remove its ${projectConfigFileName}.`,
+      `${projectRoot} is inside the pharo-agent project at ${enclosing}. `
+        + "Initialize that project root, or remove its .pharo-agent/config.json.",
     );
   }
 
-  return { projectRoot, createdProjectConfig: true };
+  return { projectRoot, createdConfig: true };
+}
+
+// The scope is pinned at the first init, so the project keeps its images if
+// its directory is renamed. Other settings are the user's and stay as they are.
+function initializedConfig(projectRoot, mountRoot) {
+  const existing = readConfig(projectRoot);
+  const config = {
+    ...existing,
+    scope: existing.scope ?? scopeFromDirectory(projectRoot),
+    mountRoot: mountRoot ?? existing.mountRoot ?? ".pharo-agent/mounts",
+  };
+  return JSON.stringify(config) === JSON.stringify(existing) ? undefined : config;
 }
 
 /** @param {{ host: string, mountRoot?: string, cwd?: string }} options */
@@ -210,23 +225,14 @@ export function initialize({ host, mountRoot, cwd = process.cwd() }) {
   }
   const guideName = hostEntry.guide;
 
-  const { projectRoot, createdProjectConfig } = resolveInitProjectRoot(cwd);
+  const { projectRoot, createdConfig } = resolveInitProjectRoot(cwd);
   const directory = pluginDirectory(projectRoot);
-  const configPath = path.join(directory, "config.json");
   const pharoGuidePath = path.join(projectRoot, "pharo.AGENTS.md");
   assertGeneratedGuideCanBeUpdated(pharoGuidePath);
   assertManagedBlockCanBeUpdated(path.join(projectRoot, guideName));
   const serverConfig = hostEntry.serverConfig && readServerConfig(projectRoot, hostEntry.serverConfig);
-  if (createdProjectConfig) {
-    createProjectConfig(projectRoot);
-  }
-  fs.mkdirSync(directory, { recursive: true });
-  if (!fs.existsSync(configPath) || mountRoot !== undefined) {
-    fs.writeFileSync(
-      configPath,
-      `${JSON.stringify({ mountRoot: mountRoot ?? ".pharo-agent/mounts" }, null, 2)}\n`,
-    );
-  }
+  const config = initializedConfig(projectRoot, mountRoot);
+  if (config) writeConfig(projectRoot, config);
   writeIfMissing(path.join(directory, ".gitignore"), "mounts/\nruntime/\n");
   fs.writeFileSync(pharoGuidePath, pharoGuide());
   const templates = mcpTemplateDirectory();
@@ -235,5 +241,5 @@ export function initialize({ host, mountRoot, cwd = process.cwd() }) {
   updateManagedBlock(path.join(projectRoot, guideName), guidance());
   if (serverConfig) writeServerConfig(serverConfig);
 
-  return { projectRoot, guideName, createdProjectConfig, ...(serverConfig && { serverConfig: hostEntry.serverConfig }) };
+  return { projectRoot, guideName, createdConfig, ...(serverConfig && { serverConfig: hostEntry.serverConfig }) };
 }
