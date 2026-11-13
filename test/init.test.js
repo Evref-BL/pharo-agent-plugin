@@ -21,9 +21,9 @@ for (const host of supportedHosts) {
       const configPath = path.join(root, ".pharo-agent", "config.json");
       const config = JSON.parse(fs.readFileSync(configPath, "utf8"));
       fs.writeFileSync(configPath, JSON.stringify({ ...config, defaultImage: "dev" }));
-      const runtimePath = path.join(root, ".pharo-agent", "runtime", "projections.json");
+      const runtimePath = path.join(root, ".pharo-agent", "runtime", "projections", "dev.json");
       fs.mkdirSync(path.dirname(runtimePath), { recursive: true });
-      fs.writeFileSync(runtimePath, '{"dev":{"mountPath":"/m/dev","projectionPort":1,"pifsRelease":"v0.1.0"}}');
+      fs.writeFileSync(runtimePath, '{"mountPath":"/m/dev","projectionPort":1,"pifsRelease":"v0.1.0","pids":[1]}');
       const mountPath = path.join(root, ".custom-mounts", "dev", "source.txt");
       fs.mkdirSync(path.dirname(mountPath), { recursive: true });
       fs.writeFileSync(mountPath, "Existing projected source fixture");
@@ -233,20 +233,41 @@ test("init makes the directory a project, with the scope its name gives", () => 
   }
 });
 
-test("init pins the scope of a project that has none, and keeps one it has", () => {
+test("a refresh leaves an existing config as it is, with or without a scope", () => {
   const root = temporaryDirectory();
   try {
     const configPath = path.join(root, ".pharo-agent", "config.json");
     fs.mkdirSync(path.dirname(configPath));
-    fs.writeFileSync(configPath, JSON.stringify({ mountRoot: ".m", defaultImage: "dev" }));
+    const unscoped = JSON.stringify({ mountRoot: ".m", defaultImage: "dev" });
+    fs.writeFileSync(configPath, unscoped);
     const result = initialize({ host: "codex", cwd: root });
 
     assert.equal(result.createdConfig, false);
-    assert.deepEqual(readPluginConfig(root), { mountRoot: ".m", defaultImage: "dev", scope: scopeFromDirectory(root) });
+    assert.equal(fs.readFileSync(configPath, "utf8"), unscoped);
 
     fs.writeFileSync(configPath, JSON.stringify({ scope: "pinned", mountRoot: ".m" }));
     initialize({ host: "codex", cwd: root });
     assert.deepEqual(readPluginConfig(root), { scope: "pinned", mountRoot: ".m" });
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+// The config names this checkout's images: a clone or a worktree that got it
+// through git would act on them as its own.
+test("init keeps the config, mounts and runtime records out of git", () => {
+  const root = temporaryProject();
+  try {
+    initialize({ host: "claude", cwd: root });
+    const gitignore = path.join(root, ".pharo-agent", ".gitignore");
+    assert.equal(fs.readFileSync(gitignore, "utf8"), "config.json\nmounts/\nruntime/\n");
+
+    fs.writeFileSync(gitignore, "mounts/\nruntime/\nmine/");
+    initialize({ host: "claude", cwd: root });
+    assert.equal(fs.readFileSync(gitignore, "utf8"), "mounts/\nruntime/\nmine/\nconfig.json\n");
+
+    initialize({ host: "claude", cwd: root });
+    assert.equal(fs.readFileSync(gitignore, "utf8"), "mounts/\nruntime/\nmine/\nconfig.json\n");
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }

@@ -23,6 +23,11 @@ pharo-agent init --host <claude|codex|opencode>
 - `.pharo-agent/config.json`, which makes the directory a project: the scope
   that tells its images from other projects' (see [Images](images.md)), taken
   from the directory's name, and the mount root.
+- `.pharo-agent/.gitignore`, which keeps `config.json`, `mounts/` and
+  `runtime/` out of git, adding whichever of them it lacks. They describe this
+  checkout's images, so a clone, or a worktree outside the project, runs
+  `init` and gets images of its own. A worktree inside the project gets no
+  config through git, so it finds the project's and shares its images.
 
 `init` acts on the current directory and never searches above it. It refuses to
 run inside an enclosing project, one with its own `.pharo-agent/config.json`,
@@ -45,11 +50,12 @@ pharo-agent block in the selected host's guide. Put project-specific guidance
 outside that block, and keep custom files separate from the generated/copied
 paths. Unrelated files are not removed during refresh.
 
-The existing `.pharo-agent/config.json` is kept: its scope, its default image
-and, unless `--mount-root` is given, its mount root. A config with no scope
-gains the one the directory's name gives, so renaming the directory later does
-not part the project from its images. Runtime records and mounted sources are
-left alone; refresh does not create, start, stop, save, or delete images.
+The existing `.pharo-agent/config.json` is kept as it is; `--mount-root`
+changes only its mount root. Its scope is the one `init` wrote when it made
+the config, so renaming the directory does not part the project from its
+images; a config without one uses the scope the directory's name gives.
+Runtime records and mounted sources are left alone; refresh does not create,
+start, stop, save, or delete images.
 
 Updating the installed package, refreshing project files, and upgrading code
 inside an image are separate operations. In particular, an image keeps the MCP

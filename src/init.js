@@ -55,11 +55,21 @@ function updateManagedBlock(filePath, content) {
   fs.writeFileSync(filePath, updated);
 }
 
-function writeIfMissing(filePath, content) {
-  if (!fs.existsSync(filePath)) {
-    fs.writeFileSync(filePath, content);
-  }
+// Lines are added, never removed or rewritten, so a user's own entries stay.
+function ensureLines(filePath, lines) {
+  const current = fs.existsSync(filePath) ? fs.readFileSync(filePath, "utf8") : "";
+  const present = new Set(current.split(/\r?\n/).map((line) => line.trim()));
+  const missing = lines.filter((line) => !present.has(line));
+  if (missing.length === 0) return;
+  const separator = current && !current.endsWith("\n") ? "\n" : "";
+  fs.writeFileSync(filePath, `${current}${separator}${missing.join("\n")}\n`);
 }
+
+// The config names this checkout's images and its default image, the mounts
+// show those images, and runtime records the mounts: they describe this
+// workspace, not the repository. A clone or a worktree elsewhere that got the
+// config through git would start, stop and delete this checkout's images.
+const ignoredPaths = ["config.json", "mounts/", "runtime/"];
 
 function assertGeneratedGuideCanBeUpdated(filePath) {
   if (!fs.existsSync(filePath)) return;
@@ -205,16 +215,14 @@ function resolveInitProjectRoot(cwd) {
   return { projectRoot, createdConfig: true };
 }
 
-// The scope is pinned at the first init, so the project keeps its images if
-// its directory is renamed. Other settings are the user's and stay as they are.
-function initializedConfig(projectRoot, mountRoot) {
-  const existing = readConfig(projectRoot);
-  const config = {
-    ...existing,
-    scope: existing.scope ?? scopeFromDirectory(projectRoot),
-    mountRoot: mountRoot ?? existing.mountRoot ?? ".pharo-agent/mounts",
-  };
-  return JSON.stringify(config) === JSON.stringify(existing) ? undefined : config;
+// The scope is pinned when init makes the config, so the project keeps its
+// images if its directory is renamed. A refresh changes only the mount root it
+// is given; a config without a scope takes the directory's at every call.
+function initializedConfig(projectRoot, createdConfig, mountRoot) {
+  if (createdConfig) {
+    return { scope: scopeFromDirectory(projectRoot), mountRoot: mountRoot ?? ".pharo-agent/mounts" };
+  }
+  return mountRoot === undefined ? undefined : { ...readConfig(projectRoot), mountRoot };
 }
 
 /** @param {{ host: string, mountRoot?: string, cwd?: string }} options */
@@ -231,9 +239,9 @@ export function initialize({ host, mountRoot, cwd = process.cwd() }) {
   assertGeneratedGuideCanBeUpdated(pharoGuidePath);
   assertManagedBlockCanBeUpdated(path.join(projectRoot, guideName));
   const serverConfig = hostEntry.serverConfig && readServerConfig(projectRoot, hostEntry.serverConfig);
-  const config = initializedConfig(projectRoot, mountRoot);
+  const config = initializedConfig(projectRoot, createdConfig, mountRoot);
   if (config) writeConfig(projectRoot, config);
-  writeIfMissing(path.join(directory, ".gitignore"), "mounts/\nruntime/\n");
+  ensureLines(path.join(directory, ".gitignore"), ignoredPaths);
   fs.writeFileSync(pharoGuidePath, pharoGuide());
   const templates = mcpTemplateDirectory();
   copyDirectory(path.join(templates, "pharo-references"), path.join(directory, "references"));
