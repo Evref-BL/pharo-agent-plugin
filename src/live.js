@@ -9,7 +9,7 @@ import {
   smalltalkString,
 } from "./runtime.js";
 
-export const pifsRelease = "v0.12.0";
+export const pifsRelease = "v0.12.1";
 
 // Set to `off`, no image mounts a source projection, wherever it runs.
 const projectionVariable = "PHARO_AGENT_PROJECTION";
