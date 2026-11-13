@@ -3,7 +3,7 @@ import { olderMcpWarning, projectImages } from "./images.js";
 import { readConfig, resolveImageName } from "./project.js";
 import {
   forgetProjection,
-  readProjections,
+  liveProjection,
   recordProjection,
   resolveMountPath,
   smalltalkString,
@@ -223,7 +223,12 @@ export async function startAgentImage(projectRoot, name, options = {}) {
         .filter(Boolean).join("\n"),
     };
   }
-  recordProjection(projectRoot, resolved, { mountPath, projectionPort: projection.port, pifsRelease });
+  recordProjection(projectRoot, resolved, {
+    mountPath,
+    projectionPort: projection.port,
+    pifsRelease,
+    pids: started.pids,
+  });
   return {
     ...started,
     mountPath,
@@ -250,11 +255,10 @@ export async function stopAgentImage(projectRoot, name, options = {}) {
   const rows = options.all
     ? (await images.list()).filter((row) => row.endpoint)
     : await images.list(resolveImageName(projectRoot, name));
-  const projections = readProjections(projectRoot);
   const stopped = [];
   const warnings = [];
   for (const row of rows) {
-    const projection = projections[row.name];
+    const projection = liveProjection(projectRoot, row);
     if (projection && row.endpoint) {
       try {
         await callImageTool({ name: row.name, images, endpoint: row.endpoint }, "image_evaluate", {

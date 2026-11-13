@@ -17,8 +17,9 @@ import {
 import { classSideSelectors, missingSelectors } from "../scripts/check-pifs-selectors.mjs";
 import {
   forgetProjection,
-  projectionsPath,
-  readProjections,
+  liveProjection,
+  projectionPath,
+  readProjection,
   recordProjection,
   smalltalkString,
 } from "../src/runtime.js";
@@ -93,21 +94,50 @@ test("an image tool's schema gains the image selector, and keeps the rest", () =
   assert.deepEqual(tool.inputSchema.required, ["code"]);
 });
 
-test("projections are recorded by image name, and the file goes with the last", () => {
+// One file per image: two sessions starting different images each write
+// their own, and neither can lose the other's record.
+test("projections are recorded one file per image, and forgotten one by one", () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "pharo-agent-runtime-"));
   try {
-    assert.deepEqual(readProjections(root), {});
+    const dev = { mountPath: "/m/dev", projectionPort: 1, pifsRelease, pids: [11] };
+    assert.equal(readProjection(root, "dev"), undefined);
 
-    recordProjection(root, "dev", { mountPath: "/m/dev", projectionPort: 1, pifsRelease });
-    recordProjection(root, "ci", { mountPath: "/m/ci", projectionPort: 2, pifsRelease });
-    assert.deepEqual(Object.keys(readProjections(root)), ["dev", "ci"]);
-    assert.equal(path.basename(projectionsPath(root)), "projections.json");
+    recordProjection(root, "dev", dev);
+    recordProjection(root, "ci", { mountPath: "/m/ci", projectionPort: 2, pifsRelease, pids: [12] });
+    assert.deepEqual(readProjection(root, "dev"), dev);
+    assert.notEqual(projectionPath(root, "dev"), projectionPath(root, "ci"));
+    assert.deepEqual(fs.readdirSync(path.dirname(projectionPath(root, "dev"))).sort(), ["ci.json", "dev.json"]);
 
     forgetProjection(root, "dev");
     forgetProjection(root, "absent");
-    assert.deepEqual(Object.keys(readProjections(root)), ["ci"]);
-    forgetProjection(root, "ci");
-    assert.equal(fs.existsSync(projectionsPath(root)), false);
+    assert.equal(readProjection(root, "dev"), undefined);
+    assert.equal(readProjection(root, "ci")?.mountPath, "/m/ci");
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("a record that is not one this package writes reads as none", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "pharo-agent-runtime-"));
+  try {
+    recordProjection(root, "dev", { mountPath: "/m/dev", projectionPort: 1, pifsRelease, pids: [11] });
+    for (const content of ["", "{", "[]", '{"mountPath":"/m/dev","projectionPort":1,"pifsRelease":"v1"}']) {
+      fs.writeFileSync(projectionPath(root, "dev"), content);
+      assert.equal(readProjection(root, "dev"), undefined, content);
+    }
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("a record holds only while a VM it was made with runs the image", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "pharo-agent-runtime-"));
+  try {
+    const dev = { mountPath: "/m/dev", projectionPort: 1, pifsRelease, pids: [11] };
+    recordProjection(root, "dev", dev);
+    assert.deepEqual(liveProjection(root, { name: "dev", pids: [11] }), dev);
+    assert.equal(liveProjection(root, { name: "dev", pids: [] }), undefined);
+    assert.equal(liveProjection(root, { name: "dev", pids: [12] }), undefined);
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }

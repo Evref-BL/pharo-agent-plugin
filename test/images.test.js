@@ -12,7 +12,7 @@ import {
   useImage,
 } from "../src/images.js";
 import { readConfig, writeConfig } from "../src/project.js";
-import { readProjections, writeProjections } from "../src/runtime.js";
+import { readProjection, recordProjection } from "../src/runtime.js";
 import {
   callsOf,
   defaultPharoMcpVersion,
@@ -114,12 +114,11 @@ test("a running image is not deleted, and keeps its place as the default", async
 
 test("deleting an image forgets the projection recorded for it", async () => {
   await inProject(async (root) => {
-    writeProjections(root, {
-      dev: { mountPath: "/m/dev", projectionPort: 1, pifsRelease: "v0.0.1" },
-      ci: { mountPath: "/m/ci", projectionPort: 2, pifsRelease: "v0.0.1" },
-    });
+    recordProjection(root, "dev", { mountPath: "/m/dev", projectionPort: 1, pifsRelease: "v0.0.1", pids: [1] });
+    recordProjection(root, "ci", { mountPath: "/m/ci", projectionPort: 2, pifsRelease: "v0.0.1", pids: [2] });
     await deleteImage(root, "dev");
-    assert.deepEqual(Object.keys(readProjections(root)), ["ci"]);
+    assert.equal(readProjection(root, "dev"), undefined);
+    assert.equal(readProjection(root, "ci")?.mountPath, "/m/ci");
   }, { images: { "proj-dev": pinnedImage() } });
 });
 
@@ -141,21 +140,21 @@ test("the list is the project's images only, the default marked", async () => {
   }, { defaultImage: "ci" });
 });
 
-// A record outlives an image that exits on its own, and the mount it names
-// is then gone with it.
-test("the list carries the projection of a running image only", async () => {
+// A record outlives a VM that exits on its own, and the mount it names is
+// then gone with it, even once another VM runs the image.
+test("the list carries a projection only while the VM that mounted it runs", async () => {
   await inProject(async (root) => {
-    writeProjections(root, {
-      dev: { mountPath: "/m/dev", projectionPort: 60341, pifsRelease: "v0.0.1" },
-      ci: { mountPath: "/m/ci", projectionPort: 60342, pifsRelease: "v0.0.1" },
-    });
+    recordProjection(root, "dev", { mountPath: "/m/dev", projectionPort: 60341, pifsRelease: "v0.0.1", pids: [91000] });
+    recordProjection(root, "ci", { mountPath: "/m/ci", projectionPort: 60342, pifsRelease: "v0.0.1", pids: [92000] });
+    recordProjection(root, "qa", { mountPath: "/m/qa", projectionPort: 60343, pifsRelease: "v0.0.1", pids: [5] });
     const byName = Object.fromEntries((await listImages(root)).images.map((image) => [image.name, image]));
 
     assert.equal(byName.dev.mountPath, "/m/dev");
     assert.equal(byName.dev.projectionPort, 60341);
     assert.equal(byName.ci.mountPath, undefined);
     assert.equal(byName.ci.projectionPort, undefined);
-  }, { images: { "proj-dev": runningImage(41000), "proj-ci": pinnedImage() } });
+    assert.equal(byName.qa.mountPath, undefined, "qa runs in a VM the record was not made with");
+  }, { images: { "proj-dev": runningImage(41000), "proj-ci": pinnedImage(), "proj-qa": runningImage(43000) } });
 });
 
 test("an image made with another pin says that recreating it gives the current MCP", async () => {

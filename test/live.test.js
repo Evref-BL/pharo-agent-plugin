@@ -6,7 +6,7 @@ import test from "node:test";
 import { callImageTool, imageTarget } from "../src/gateway.js";
 import { pifsRelease, startAgentImage, stopAgentImage } from "../src/live.js";
 import { writeConfig } from "../src/project.js";
-import { readProjections, writeProjections } from "../src/runtime.js";
+import { projectionPath, readProjection, recordProjection } from "../src/runtime.js";
 import {
   callsOf,
   pinnedImage,
@@ -55,7 +55,7 @@ test("a start mounts the image's source and records the projection", mounts, asy
     assert.equal(started.mountPath, mountPath);
     assert.equal(started.projectionPort, 60341);
     assert.equal(started.warning, undefined);
-    assert.deepEqual(readProjections(root), { dev: { mountPath, projectionPort: 60341, pifsRelease } });
+    assert.deepEqual(readProjection(root, "dev"), { mountPath, projectionPort: 60341, pifsRelease, pids: started.pids });
     const [evaluation] = callsOf("callTool");
     assert.equal(evaluation.tool, "image_evaluate");
     assert.ok(evaluation.arguments.code.includes(`named: 'proj-dev'`), "the mount carries the image's disk name");
@@ -80,7 +80,7 @@ test("PHARO_AGENT_PROJECTION=off starts the image without asking PIFS", async ()
     assert.match(started.warning ?? "", /PHARO_AGENT_PROJECTION=off/);
     assert.match(started.warning ?? "", /Image dev is running with its Pharo tools/);
     assert.deepEqual(callsOf("callTool"), []);
-    assert.deepEqual(readProjections(root), {});
+    assert.equal(readProjection(root, "dev"), undefined);
   }, { images: { "proj-dev": pinnedImage() } }, { projection: "off" });
 });
 
@@ -90,7 +90,7 @@ test("a projection PIFS refuses leaves the image running, with the reason", moun
 
     assert.match(started.warning ?? "", /^FUSE needs fusermount3\./);
     assert.equal(readWorld().images["proj-dev"].running !== undefined, true);
-    assert.deepEqual(readProjections(root), {});
+    assert.equal(readProjection(root, "dev"), undefined);
   }, {
     images: {
       "proj-dev": pinnedImage({
@@ -125,9 +125,9 @@ test("a running image is refused, and nothing is asked of it", async () => {
 
 test("a start forgets the projection a gone VM left recorded", async () => {
   await inProject(async (root) => {
-    writeProjections(root, { dev: { mountPath: "/m/dev", projectionPort: 1, pifsRelease: "v0.0.1" } });
+    recordProjection(root, "dev", { mountPath: "/m/dev", projectionPort: 1, pifsRelease: "v0.0.1", pids: [7] });
     await startAgentImage(root, "dev");
-    assert.deepEqual(readProjections(root), {});
+    assert.equal(readProjection(root, "dev"), undefined);
   }, { images: { "proj-dev": pinnedImage() } }, { projection: "off" });
 });
 
@@ -138,31 +138,55 @@ test("a start of an image made with another pin says so", async () => {
   }, { images: { "proj-dev": pinnedImage({ mcp: { source: "pin", version: "0.0.1" } }) } }, { projection: "off" });
 });
 
+// runningImage(41000) runs as pid 91000.
+const mountedDev = { mountPath: "/m/dev", projectionPort: 60341, pifsRelease, pids: [91000] };
+
 test("a stop unmounts the projection, then kills the image", async () => {
   await inProject(async (root) => {
-    writeProjections(root, { dev: { mountPath: "/m/dev", projectionPort: 60341, pifsRelease } });
+    recordProjection(root, "dev", mountedDev);
     const stopped = await stopAgentImage(root, "dev");
 
     assert.deepEqual(stopped, { stopped: [{ name: "dev", killed: [91000] }] });
     const order = readWorld().calls.filter((call) => call.op === "callTool" || call.op === "stop");
     assert.deepEqual(order.map((call) => call.op), ["callTool", "stop"]);
     assert.match(order[0].arguments.code, /stopOn: 60341/);
-    assert.deepEqual(readProjections(root), {});
+    assert.equal(readProjection(root, "dev"), undefined);
   }, { images: { "proj-dev": runningImage(41000) } });
 });
 
 test("an image that exited is stopped without asking it to unmount", async () => {
   await inProject(async (root) => {
-    writeProjections(root, { dev: { mountPath: "/m/dev", projectionPort: 60341, pifsRelease } });
+    recordProjection(root, "dev", mountedDev);
     assert.deepEqual(await stopAgentImage(root, undefined), { stopped: [{ name: "dev", killed: [] }] });
     assert.deepEqual(callsOf("callTool"), []);
-    assert.deepEqual(readProjections(root), {});
+    assert.equal(readProjection(root, "dev"), undefined);
   }, { images: { "proj-dev": pinnedImage() } }, { config: { defaultImage: "dev" } });
+});
+
+// The VM that mounted exited, and the image runs again in a VM started
+// elsewhere, which has no projection and serves nothing on that port.
+test("a projection recorded for another VM of the image is not unmounted", async () => {
+  await inProject(async (root) => {
+    recordProjection(root, "dev", { ...mountedDev, pids: [5] });
+    assert.deepEqual(await stopAgentImage(root, "dev"), { stopped: [{ name: "dev", killed: [91000] }] });
+    assert.deepEqual(callsOf("callTool"), []);
+  }, { images: { "proj-dev": runningImage(41000) } });
+});
+
+// A record is an extra: one that cannot be read must not keep an image
+// from stopping.
+test("a projection record that does not read is no record", async () => {
+  await inProject(async (root) => {
+    recordProjection(root, "dev", mountedDev);
+    fs.writeFileSync(projectionPath(root, "dev"), '{"mountPath":');
+    assert.deepEqual(await stopAgentImage(root, "dev"), { stopped: [{ name: "dev", killed: [91000] }] });
+    assert.deepEqual(callsOf("callTool"), []);
+  }, { images: { "proj-dev": runningImage(41000) } });
 });
 
 test("an unmount that fails still stops the image, and says so", async () => {
   await inProject(async (root) => {
-    writeProjections(root, { dev: { mountPath: "/m/dev", projectionPort: 60341, pifsRelease } });
+    recordProjection(root, "dev", mountedDev);
     const stopped = await stopAgentImage(root, "dev");
 
     assert.deepEqual(stopped.stopped, [{ name: "dev", killed: [91000] }]);

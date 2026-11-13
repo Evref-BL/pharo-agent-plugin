@@ -113,6 +113,6 @@ made with a script of your own brings its tools another way
 
 The images are in PLexus's store. `.pharo-agent/config.json` holds the
 project's scope, its default image and its mount root. `.pharo-agent/mounts`
-holds the projections, and `.pharo-agent/runtime` the record of which running
-image this project mounted where; both are git-ignored. Pass
-`--mount-root <path>` to `init` to project somewhere else.
+holds the projections, and `.pharo-agent/runtime` the record of which VM this
+project mounted where. All three describe this checkout and are git-ignored.
+Pass `--mount-root <path>` to `init` to project somewhere else.

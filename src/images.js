@@ -1,6 +1,6 @@
 import { Images, defaultPharoMcpVersion } from "@evref-bl/plexus";
 import { projectScope, readConfig, writeConfig } from "./project.js";
-import { forgetProjection, readProjections } from "./runtime.js";
+import { forgetProjection, liveProjection } from "./runtime.js";
 
 /** PLexus's images, seen through this project's scope. */
 export function projectImages(projectRoot) {
@@ -27,12 +27,11 @@ export async function listImageTemplates(projectRoot) {
 
 export async function listImages(projectRoot) {
   const { defaultImage } = readConfig(projectRoot);
-  const projections = readProjections(projectRoot);
   const rows = await projectImages(projectRoot).list();
   return {
     ...(typeof defaultImage === "string" ? { defaultImage } : {}),
     images: rows.map((row) => {
-      const projection = row.running ? projections[row.name] : undefined;
+      const projection = liveProjection(projectRoot, row);
       const warning = olderMcpWarning(row);
       return {
         ...row,
