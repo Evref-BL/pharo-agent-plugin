@@ -238,6 +238,21 @@ export async function startAgentImage(projectRoot, name, options = {}) {
 }
 
 /**
+ * Said where an agent takes up an image, by a start from the terminal or
+ * from the server: a call that names no image does not follow the image
+ * just started.
+ *
+ * @param {string} name the image started
+ * @param {string} [defaultImage] where a call naming none goes
+ */
+export function callsNote(name, defaultImage) {
+  if (name === defaultImage) return undefined;
+  return defaultImage === undefined
+    ? `Pass image: "${name}" to its tools.`
+    : `Pass image: "${name}" to its tools: a call that names no image goes to ${defaultImage}, the default image.`;
+}
+
+/**
  * Stop one image, the default one when none is named, or with `all`, every
  * image of this project that a PLexus start left answering. A VM started by
  * hand, or by an older PLexus, has no endpoint, and only a stop that names

@@ -67,7 +67,9 @@ named.
 Without a name, `image start` and `image stop` act on the default image. A
 tool command, `list` and `mcp` take `--image <name>`, which scopes a call
 rather than naming a subject, and the default image answers without it. Over
-`mcp`, each Pharo tool takes the same optional `image` argument.
+`mcp`, each Pharo tool takes the same `image` argument. Starting an image other
+than the default, from the terminal or over `mcp`, answers a `note` saying to
+name it.
 
 ## When an image exits
 

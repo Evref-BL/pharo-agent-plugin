@@ -78,6 +78,32 @@ test("image stop takes one name or --all", async () => {
   });
 });
 
+// The terminal is the plugin's first surface, and its start said nothing,
+// so the next tool command went to the default image.
+test("image start of an image other than the default says to name it, as the server's does", async () => {
+  const projection = process.env.PHARO_AGENT_PROJECTION;
+  process.env.PHARO_AGENT_PROJECTION = "off";
+  try {
+    await inProject(async (_root, printed) => {
+      await main(["image", "start", "p13"]);
+      const started = JSON.parse(printed.join("\n"));
+      assert.equal(started.name, "p13");
+      assert.equal(
+        started.note,
+        'Pass image: "p13" to its tools: a call that names no image goes to dev, the default image.',
+      );
+
+      printed.length = 0;
+      await main(["image", "start"]);
+      assert.equal(JSON.parse(printed.join("\n")).name, "dev");
+      assert.equal(JSON.parse(printed.join("\n")).note, undefined, "a call that names no image already goes there");
+    }, { images: { "proj-dev": pinnedImage(), "proj-p13": pinnedImage() } }, { defaultImage: "dev" });
+  } finally {
+    if (projection === undefined) delete process.env.PHARO_AGENT_PROJECTION;
+    else process.env.PHARO_AGENT_PROJECTION = projection;
+  }
+});
+
 test("image create needs a name and a template, and --every-start a script", async () => {
   await inProject(async () => {
     await assert.rejects(() => main(["image", "create", "--template", "x"]), /requires an image name/);
@@ -215,7 +241,7 @@ test("a tool call to an image that is not running is PLexus's refusal", async ()
   await inProject(async () => {
     await assert.rejects(
       () => main(["tool_search", "--image", "spare"]),
-      (/** @type {any} */ error) => error.code === "not-running",
+      (/** @type {any} */ error) => error.code === "not-running" && /image_start/.test(error.message),
     );
   }, { images: { "proj-spare": pinnedImage() } });
 });

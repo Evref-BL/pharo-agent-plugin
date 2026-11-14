@@ -75,23 +75,39 @@ test("a removed selector is reported against a released PIFSServer", () => {
   );
 });
 
+const evaluate = {
+  name: "image_evaluate",
+  inputSchema: {
+    type: "object",
+    properties: { code: { type: "string" } },
+    required: ["code"],
+  },
+};
+
 test("an image tool's schema gains the image selector, and keeps the rest", () => {
-  const tool = withImageSelector(
-    {
-      name: "image_evaluate",
-      inputSchema: {
-        type: "object",
-        properties: { code: { type: "string" } },
-        required: ["code"],
-      },
-    },
-    "dev",
-  );
+  const tool = withImageSelector(evaluate, ["dev", "p13"], "dev");
 
   assert.equal(tool.inputSchema.properties.image.type, "string");
-  assert.match(tool.inputSchema.properties.image.description, /Defaults to dev/);
+  assert.equal(
+    tool.inputSchema.properties.image.description,
+    "Image to call, one of dev, p13. A call that names none goes to dev, the default image.",
+  );
   assert.deepEqual(Object.keys(tool.inputSchema.properties), ["code", "image"]);
   assert.deepEqual(tool.inputSchema.required, ["code"]);
+});
+
+test("the image selector is required where the default image does not list the tool", () => {
+  const unlisted = withImageSelector(evaluate, ["p13"], "dev");
+  const stopped = withImageSelector(evaluate, ["p13"], "dev", "is not running");
+  const none = withImageSelector(evaluate, ["p13"], undefined);
+
+  assert.equal(unlisted.inputSchema.properties.image.description, "Image to call, one of p13. The default image, dev, does not list this tool.");
+  assert.deepEqual(unlisted.inputSchema.required, ["code", "image"]);
+  assert.equal(stopped.inputSchema.properties.image.description, "Image to call, one of p13. The default image, dev, is not running.");
+  assert.deepEqual(stopped.inputSchema.required, ["code", "image"]);
+  assert.equal(none.inputSchema.properties.image.description, "Image to call, one of p13.");
+  assert.deepEqual(none.inputSchema.required, ["code", "image"]);
+  assert.deepEqual(evaluate.inputSchema.required, ["code"], "the image's own schema is left as it was");
 });
 
 // One file per image: two sessions starting different images each write
