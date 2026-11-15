@@ -6,7 +6,7 @@ import test from "node:test";
 import { imageToolAnswers } from "@evref-bl/plexus";
 import { startAnswer, stopAnswer } from "../src/answers.js";
 import { callImageTool, imageTarget } from "../src/gateway.js";
-import { pifsRelease, startAgentImage, stopAgentImage } from "../src/live.js";
+import { pifsRelease, pifsStartSeconds, startAgentImage, stopAgentImage } from "../src/live.js";
 import { writeConfig } from "../src/project.js";
 import { projectionPath, readProjection, recordProjection } from "../src/runtime.js";
 import {
@@ -86,6 +86,53 @@ test("a start mounts the image's source and records the projection", mounts, asy
     assert.equal(evaluation.tool, "image_evaluate");
     assert.ok(evaluation.arguments.code.includes(`named: 'proj-dev'`), "the mount carries the image's disk name");
   }, { images: { "proj-dev": pinnedImage({ answers: [projectionPort] }) } });
+});
+
+// An MCP with an evaluation time limit stops the load at its 30 s default
+// unless told otherwise; one without the limit refuses the argument.
+test("the projection start gives its evaluation a limit only where the image lists one", mounts, async () => {
+  const limitedEvaluate = {
+    name: "image_evaluate",
+    inputSchema: {
+      type: "object",
+      properties: { code: { type: "string" }, timeoutSeconds: { type: "integer", default: 30, minimum: 1, maximum: 600 } },
+      required: ["code"],
+    },
+  };
+  const olderEvaluate = { name: "image_evaluate", inputSchema: { type: "object", properties: { code: { type: "string" } } } };
+  await inProject(async (root) => {
+    await startAgentImage(root, "dev");
+    await startAgentImage(root, "old");
+    await startAgentImage(root, "bare");
+
+    const [limited, older, bare] = callsOf("callTool");
+    assert.equal(limited.arguments.timeoutSeconds, pifsStartSeconds);
+    assert.deepEqual(limited.options, { inputSchema: limitedEvaluate.inputSchema, minimumMs: 60_000 });
+    for (const call of [older, bare]) {
+      assert.deepEqual(Object.keys(call.arguments), ["code"]);
+      assert.deepEqual(call.options, { minimumMs: 60_000 });
+    }
+  }, {
+    images: {
+      "proj-dev": pinnedImage({ tools: [limitedEvaluate], answers: [projectionPort] }),
+      "proj-old": pinnedImage({ tools: [olderEvaluate], answers: [projectionPort] }),
+      "proj-bare": pinnedImage({ answers: [projectionPort] }),
+    },
+  });
+});
+
+// The listing is the image's first answer: one that fails is a mount that
+// fails, and the evaluation is not sent to an image that did not answer it.
+test("a projection start whose image does not list its tools stops the image", mounts, async () => {
+  await inProject(async (root) => {
+    await assert.rejects(
+      () => startAgentImage(root, "dev"),
+      { message: "Image dev started, but was stopped again because mounting its source failed: fetch failed:"
+        + " nothing answers at http://127.0.0.1:40001/. Start it with PHARO_AGENT_PROJECTION=off to skip the mount." },
+    );
+    assert.deepEqual(callsOf("callTool"), []);
+    assert.equal(readWorld().images["proj-dev"].running, undefined);
+  }, { images: { "proj-dev": pinnedImage({ unreachable: true }) } });
 });
 
 test("no name starts the default image, as headless unless asked", mounts, async () => {

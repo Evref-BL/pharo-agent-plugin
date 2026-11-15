@@ -1,4 +1,4 @@
-import { callImageTool } from "./gateway.js";
+import { callImageTool, listImageTools } from "./gateway.js";
 import { projectImages } from "./images.js";
 import { readConfig, resolveImageName } from "./project.js";
 import {
@@ -110,6 +110,14 @@ export function projectionStartOutcome(printString) {
   };
 }
 
+// How long the image may take over the projection start: a Metacello load of
+// PIFS from GitHub on a cold image, then a mount wait of at most 10 s. An MCP
+// with an evaluation time limit stops an evaluation at 30 s unless told
+// otherwise, which a cold load may outlast. Not measured on its own: the one
+// trace of a start, pifs-1's, created, started and mounted in 29.7 s in all,
+// and this leaves four times that. The forwarded call waits it plus 30 s.
+export const pifsStartSeconds = 120;
+
 export function pifsStopCode(projectionPort) {
   return `(Smalltalk globals at: #PIFSServer) stopOn: ${projectionPort}`;
 }
@@ -163,9 +171,17 @@ export function resultPrintString(result) {
  * @param {string} imageName
  */
 async function startProjection(target, mountPath, imageName) {
-  const result = await callImageTool(target, "image_evaluate", {
-    code: pifsStartCode(mountPath, imageName),
-  });
+  // Only an image whose MCP lists the limit is given one: an older MCP
+  // refuses an argument it does not know. The listing is the image's answer
+  // too, so one that fails fails the mount.
+  const evaluate = (await listImageTools(target)).find((tool) => tool.name === "image_evaluate");
+  const limited = evaluate?.inputSchema?.properties?.timeoutSeconds !== undefined;
+  const result = await callImageTool(
+    target,
+    "image_evaluate",
+    { code: pifsStartCode(mountPath, imageName), ...(limited ? { timeoutSeconds: pifsStartSeconds } : {}) },
+    limited && evaluate ? { inputSchema: evaluate.inputSchema } : {},
+  );
   // A refusal is PIFS's own: it stopped what it had started.
   const outcome = projectionStartOutcome(resultPrintString(result));
   if (!outcome) {
