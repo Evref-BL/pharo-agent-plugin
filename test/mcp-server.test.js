@@ -203,6 +203,20 @@ function answerOf(result) {
   return JSON.parse(result.content[0].text);
 }
 
+/**
+ * The text of a refusal, which reaches the caller as a tool result marked as
+ * an error, never as a JSON-RPC error a host reports as its own failure.
+ *
+ * @param {{ result?: any, error?: any }} answer
+ */
+function refusalOf({ result, error }) {
+  assert.equal(error, undefined, "a refusal is a tool result, not a JSON-RPC error");
+  assert.equal(result?.isError, true, JSON.stringify(result));
+  assert.equal(result.content.length, 1);
+  assert.equal(result.content[0].type, "text");
+  return result.content[0].text;
+}
+
 /** The listings the fake store was asked for at an endpoint, as it records them. */
 function listingsAt(url, op = "listTools") {
   return callsOf(op).filter((call) => call.url === url);
@@ -357,10 +371,8 @@ test("a default image that does not exist says so, in the schema and on a call",
     );
     assert.deepEqual(schema.required, ["image"]);
 
-    const { result, error } = callTool(cwd, "class_create", { name: "Foo" });
-    assert.equal(result, undefined);
     assert.equal(
-      error.message,
+      refusalOf(callTool(cwd, "class_create", { name: "Foo" })),
       "No image is named, and the default image dev does not exist. Running now: p13. Name one with image,"
         + " create it with image_create, or choose another default with pharo-agent image use <name>.",
     );
@@ -656,11 +668,11 @@ test("a call that names no image goes to the default image while others run", ()
 
 test("a call that names no image, while the default is stopped, names the running ones", () => {
   inProject((cwd) => {
-    const { result, error } = callTool(cwd, "class_create", { name: "Foo" });
-
-    assert.equal(result, undefined);
-    assert.match(error.message, /default image dev is not running/);
-    assert.match(error.message, /Running now: p13/);
+    assert.equal(
+      refusalOf(callTool(cwd, "class_create", { name: "Foo" })),
+      "No image is named, and the default image dev is not running. Running now: p13."
+        + " Name one with image, or start dev with image_start.",
+    );
     assert.deepEqual(callsOf("callTool"), [], "nothing is written into an image the call did not name");
   }, { images: { "proj-dev": pinnedImage(), "proj-p13": runningImage(42000) } }, { defaultImage: "dev" });
 });
@@ -669,15 +681,14 @@ test("a call that names no image, while the default is stopped, names the runnin
 // that image stopped, was told to start it rather than which images run.
 test("with --image, a call that names no image, while that image is stopped, names the running ones", () => {
   inProject((cwd) => {
-    const { result, error } = serve({
+    const answer = serve({
       cwd,
       args: ["--image", "ci"],
       request: { method: "tools/call", params: { name: "class_get", arguments: { name: "Point" } } },
     });
 
-    assert.equal(result, undefined);
     assert.equal(
-      error.message,
+      refusalOf(answer),
       "No image is named, and the default image ci is not running. Running now: dev."
         + " Name one with image, or start ci with image_start.",
     );
@@ -688,11 +699,10 @@ test("with --image, a call that names no image, while that image is stopped, nam
 // 0.17.1 said to start it; 0.18.0 passed on PLexus's bare fact.
 test("a call to an image that is not running says to start it", () => {
   inProject((cwd) => {
-    const { result, error } = callTool(cwd, "class_get", { image: "p13", name: "Point" });
-
-    assert.equal(result, undefined);
-    assert.match(error.message, /Image p13 is not running/);
-    assert.match(error.message, /image_start/);
+    assert.equal(
+      refusalOf(callTool(cwd, "class_get", { image: "p13", name: "Point" })),
+      "Image p13 is not running. Start it with image_start; it starts as it was last saved.",
+    );
   }, { images: { "proj-dev": runningImage(41000), "proj-p13": pinnedImage() } }, { defaultImage: "dev" });
 });
 
@@ -733,12 +743,87 @@ test("a create with no template is refused where the caller can read it", () => 
   // The input schema is a description. Nothing between a model and this
   // server enforces it, so the missing field is named here.
   inProject((cwd) => {
-    const { result, error } = callTool(cwd, "image_create", { name: "dev" });
-
-    assert.equal(result, undefined);
-    assert.match(error.message, /image_create needs template/);
+    assert.equal(
+      refusalOf(callTool(cwd, "image_create", { name: "dev" })),
+      "Invalid arguments for image_create. template is required.",
+    );
     assert.deepEqual(callsOf("create"), [], "a refused create never reaches PLexus");
   });
+});
+
+// An argument the schema does not name was dropped, so a call read as
+// another than the one made.
+test("an argument the image tool does not take is refused, naming those it takes", () => {
+  inProject((cwd) => {
+    assert.equal(
+      refusalOf(callTool(cwd, "image_delete", { name: "dev", force: true })),
+      "Invalid arguments for image_delete. force is not accepted here; expected one of name.",
+    );
+    assert.equal(
+      refusalOf(callTool(cwd, "image_list", { detail: true })),
+      "Invalid arguments for image_list. detail is not accepted here.",
+    );
+    assert.deepEqual(callsOf("delete"), []);
+    assert.deepEqual(callsOf("list"), [], "a refused call asks PLexus nothing");
+  }, { images: { "proj-dev": pinnedImage() } }, { defaultImage: "dev" });
+});
+
+test("a blank name or a display the start does not take is refused, and nothing starts", () => {
+  inProject((cwd) => {
+    assert.equal(
+      refusalOf(callTool(cwd, "image_start", { name: " " })),
+      "Invalid arguments for image_start. name is blank; leave it out or give it a value.",
+    );
+    assert.equal(
+      refusalOf(callTool(cwd, "image_start", { display: "window" })),
+      'Invalid arguments for image_start. display must be "headless" or "interactive", not "window".',
+    );
+    assert.equal(
+      refusalOf(callTool(cwd, "image_stop", { all: "yes" })),
+      "Invalid arguments for image_stop. all must be boolean, not string.",
+    );
+    assert.deepEqual(callsOf("start"), []);
+    assert.deepEqual(callsOf("stop"), []);
+  }, { images: { "proj-dev": pinnedImage() } }, { defaultImage: "dev" });
+});
+
+test("every image tool's schema refuses an argument it does not name", () => {
+  inProject((cwd) => {
+    const { tools } = listTools(cwd);
+    for (const tool of tools) {
+      assert.equal(tool.inputSchema.additionalProperties, false, tool.name);
+    }
+  });
+});
+
+test("a call with no project says how to make one, as a result", () => {
+  const elsewhere = fs.mkdtempSync(path.join(os.tmpdir(), "pharo-agent-noproject-"));
+  try {
+    const answer = serve({
+      cwd: elsewhere,
+      env: { CLAUDE_PROJECT_DIR: elsewhere },
+      request: { method: "tools/call", params: { name: "image_list", arguments: {} } },
+    });
+    assert.equal(
+      refusalOf(answer),
+      "No .pharo-agent/config.json found above the current directory. Run pharo-agent init --host <host> in the project root.",
+    );
+  } finally {
+    fs.rmSync(elsewhere, { recursive: true, force: true });
+  }
+});
+
+test("a refusal of PLexus is a result in its own words", () => {
+  inProject((cwd) => {
+    assert.equal(
+      refusalOf(callTool(cwd, "image_delete", { name: "dev" })),
+      "Image dev is running as pid 91000. Stop it with image_stop before deleting it.",
+    );
+    assert.equal(
+      refusalOf(callTool(cwd, "image_create", { name: "dev", template: "Pharo 14.0 - 64bit (stable)" })),
+      "Image dev already exists: choose another name, or delete it with image_delete first to create it again.",
+    );
+  }, { images: { "proj-dev": runningImage(41000) } }, { defaultImage: "dev" });
 });
 
 test("a start through the server says the tool list changed", () => {
@@ -782,7 +867,7 @@ test("an image tool goes to the image its argument names, without that argument"
     assert.equal(served.status, 0, served.stderr);
     assert.deepEqual(result.content, [{ type: "text", text: "Point" }]);
     assert.deepEqual(callsOf("callTool"), [
-      { op: "callTool", url: "http://127.0.0.1:42000/", tool: "class_get", arguments: { name: "Point" } },
+      { op: "callTool", url: "http://127.0.0.1:42000/", tool: "class_get", arguments: { name: "Point" }, options: {} },
     ]);
   }, {
     images: {
@@ -794,9 +879,7 @@ test("an image tool goes to the image its argument names, without that argument"
 
 test("a delete through the server needs the name, never the default", () => {
   inProject((cwd) => {
-    const { error } = callTool(cwd, "image_delete", {});
-
-    assert.match(error.message, /image_delete needs name/);
+    assert.equal(refusalOf(callTool(cwd, "image_delete", {})), "Invalid arguments for image_delete. name is required.");
     assert.deepEqual(callsOf("delete"), []);
     assert.ok(readWorld().images["proj-dev"]);
   }, { images: { "proj-dev": pinnedImage() } }, { defaultImage: "dev" });
@@ -806,9 +889,7 @@ test("a delete through the server needs the name, never the default", () => {
 // running image of the project, other sessions' included.
 test("a stop through the server that names an image and asks for all is refused", () => {
   inProject((cwd) => {
-    const { error } = callTool(cwd, "image_stop", { name: "dev", all: true });
-
-    assert.match(error.message, /takes no image name/);
+    assert.equal(refusalOf(callTool(cwd, "image_stop", { name: "dev", all: true })), "Stopping every image takes no image name.");
     assert.deepEqual(callsOf("stop"), []);
     assert.notEqual(readWorld().images["proj-ci"].running, undefined);
   }, { images: { "proj-dev": runningImage(41000), "proj-ci": runningImage(42000) } });

@@ -232,7 +232,7 @@ test("a call reaches the endpoint PLexus gives for the named image", async () =>
 
     assert.deepEqual(answer, { content: [{ type: "text", text: "Point" }] });
     assert.deepEqual(callsOf("callTool"), [
-      { op: "callTool", url: "http://127.0.0.1:42000/", tool: "class_get", arguments: { name: "Point" } },
+      { op: "callTool", url: "http://127.0.0.1:42000/", tool: "class_get", arguments: { name: "Point" }, options: {} },
     ]);
   }, {
     images: {
