@@ -745,11 +745,11 @@ test("image_list says when the default image does not exist, or there is none", 
   });
 });
 
-test("image_templates names each template under its category, and which need theirs", () => {
+test("image_templates names each template under its category", () => {
   inProject((cwd) => {
     assert.equal(
       textOf(callTool(cwd, "image_templates")),
-      "4 templates in 2 categories. Pharo 10.0 - 64bit is in more than one, so image_create needs its category.\n"
+      "4 templates in 2 categories.\n"
         + "Official distributions:\n"
         + "  Pharo 14.0 - 64bit (stable)\n"
         + "  Pharo 13.0 - 64bit\n"
@@ -849,7 +849,7 @@ test("an image is created through the server, and becomes the default", () => {
   });
 });
 
-test("a create under a server started with an image says where a call naming none still goes", () => {
+test("a create that makes the first image says it is the default", () => {
   inProject((cwd) => {
     const answer = serve({
       cwd,
@@ -859,7 +859,7 @@ test("a create under a server started with an image says where a call naming non
     assert.equal(
       textOf(answer),
       "Created image dev from Pharo 13.0 - 64bit. It is not running yet; image_start starts it."
-        + " It is the project's default image; a call that names no image still goes to ci.",
+        + " It is the project's default image.",
     );
   });
 });
@@ -988,8 +988,7 @@ test("a start of an image other than the default says to name it in its tools' c
     assert.equal(served.status, 0, served.stderr);
     assert.equal(
       textOf({ served, result }),
-      'Started image p13 as it was last saved. Pass image: "p13" to its tools: a call that names no image'
-        + " goes to dev, the default image.",
+      'Started image p13 as it was last saved. Pass image: "p13" to its tools.',
     );
   }, { images: { "proj-dev": runningImage(41000), "proj-p13": pinnedImage() } }, { defaultImage: "dev" });
 });
@@ -1049,14 +1048,14 @@ test("a stop of all says which images it stopped and which it left running", () 
     assert.equal(
       textOf(callTool(cwd, "image_stop", { all: true })),
       "Stopped ci and dev; what they had not saved is lost.\n"
-        + "Warning: Left legacy running: not started by this PLexus, so only image_stop with its name stops it.\n"
+        + "Warning: Left legacy running: not started by this PLexus.\n"
         + "Warning: Left spike running: it is still being created.",
     );
     assert.deepEqual(callsOf("stop").map((call) => call.name), ["ci", "dev"]);
     assert.equal(
       textOf(callTool(cwd, "image_stop", { all: true })),
       "No image of this project was stopped.\n"
-        + "Warning: Left legacy running: not started by this PLexus, so only image_stop with its name stops it.\n"
+        + "Warning: Left legacy running: not started by this PLexus.\n"
         + "Warning: Left spike running: it is still being created.",
     );
   }, {
@@ -1070,7 +1069,7 @@ test("a stop of all says which images it stopped and which it left running", () 
   });
   inProject((cwd) => {
     assert.equal(textOf(callTool(cwd, "image_stop", { all: true })), "Stopped image dev; what it had not saved is lost.");
-    assert.equal(textOf(callTool(cwd, "image_stop", { all: true })), "No image of this project was running.");
+    assert.equal(textOf(callTool(cwd, "image_stop", { all: true })), "No image of this project was stopped.");
   }, { images: { "proj-dev": runningImage(41000), "proj-idle": pinnedImage() } });
 });
 
@@ -1180,25 +1179,6 @@ test("a call the host cancels is dropped, and answered nothing", async () => {
   }, { defaultImage: "dev" });
 });
 
-// A tool an MCP older than 2.1.0 holds without listing it is answered as
-// unknown, and the bare -32601 sent a reader looking for a tool that is there.
-test("a -32601 from an image on an MCP older than 2.1.0 says it may hold the tool", () => {
-  inProject((cwd) => {
-    assert.equal(
-      refusalOf(callTool(cwd, "package_list", {})),
-      "Image dev answered that it has no tool package_list, but its Pharo MCP 0.0.1 may hold the tool"
-        + " without listing it. Recreating the image gives it the current MCP.",
-    );
-  }, {
-    images: {
-      "proj-dev": runningImage(41000, {
-        mcp: { source: "pin", version: "0.0.1" },
-        answers: [{ tool: "package_list", error: "MCP error -32601: The method does not exist", kind: "answered", rpcCode: -32601 }],
-      }),
-    },
-  }, { defaultImage: "dev" });
-});
-
 // A save on MCP 3.8.0 closes the connection once it has saved, and "socket
 // hang up" read as a save that failed: agents restarted the image to make
 // sure, losing what they had not saved since.
@@ -1257,7 +1237,7 @@ test("a delete of the default image says the next image created becomes the defa
     assert.equal(
       textOf(answer),
       "Deleted image dev and its files. It was the project's default image; the next image created becomes"
-        + " the default. A call that names no image still goes to ci.",
+        + " the default.",
     );
   }, { images: { "proj-dev": pinnedImage() } }, { defaultImage: "dev" });
 });

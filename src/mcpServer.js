@@ -397,7 +397,6 @@ export async function serveImagesMcp(resolveProjectRoot, selectedImage) {
             template: args.template,
             ...(args.category === undefined ? {} : { category: args.category }),
           }),
-          selectedImage,
         );
       case "image_list":
         return listAnswer(projectRoot, await listImages(projectRoot, defaultImage), selectedImage !== undefined);
@@ -416,7 +415,7 @@ export async function serveImagesMcp(resolveProjectRoot, selectedImage) {
         return stopAnswer(stopped, args.all === true);
       }
       default:
-        return deleteAnswer(await deleteImage(projectRoot, args.name), selectedImage);
+        return deleteAnswer(await deleteImage(projectRoot, args.name));
     }
   }
 

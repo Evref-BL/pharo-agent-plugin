@@ -91,7 +91,7 @@ test("image start of an image other than the default says to name it, as the ser
       assert.equal(started.name, "p13");
       assert.equal(
         started.note,
-        'Pass image: "p13" to its tools: a call that names no image goes to dev, the default image.',
+        'Pass image: "p13" to its tools.',
       );
       assert.equal(started.warning, undefined, "projections off by choice, so nothing to warn of");
 
@@ -123,7 +123,7 @@ test("each image command prints its tool's text, and with --json the JSON it pri
       assert.equal(
         await said(["image", "templates"]),
         [
-          "4 templates in 2 categories. Pharo 10.0 - 64bit is in more than one, so image_create needs its category.",
+          "4 templates in 2 categories.",
           "Official distributions:",
           "  Pharo 14.0 - 64bit (stable)",
           "  Pharo 13.0 - 64bit",

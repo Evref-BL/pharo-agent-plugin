@@ -316,8 +316,8 @@ export class Images {
       throw new PlexusError(
         "image-running",
         problem === undefined ? texts.alreadyRunning(name)
-          : problem === noEndpointYet ? texts.alreadyStarting(name, pids)
-          : texts.alreadyRunningWithoutCalls(name, pids, problem),
+          : problem === noEndpointYet ? texts.starting(name, pids)
+          : texts.takesNoCalls(name, pids, problem),
         { pids },
       );
     }

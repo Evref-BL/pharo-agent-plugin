@@ -51,10 +51,7 @@ export function pathFrom(projectRoot, target) {
  * @param {string} [defaultImage] where a call naming none goes
  */
 export function callsNote(name, defaultImage) {
-  if (name === defaultImage) return undefined;
-  return defaultImage === undefined
-    ? `Pass image: "${name}" to its tools.`
-    : `Pass image: "${name}" to its tools: a call that names no image goes to ${defaultImage}, the default image.`;
+  return name === defaultImage ? undefined : `Pass image: "${name}" to its tools.`;
 }
 
 /**
@@ -130,16 +127,10 @@ function defaultSaid(rows, defaultImage, chosen) {
     : `The default image, ${defaultImage}, ${missingDefault(chosen)}.`;
 }
 
-/**
- * @param {Parameters<typeof imageToolAnswers.created>[0] & { isDefault: boolean }} created
- * @param {string} [selectedImage] the image the server was started with
- */
-export function createAnswer(created, selectedImage) {
+/** @param {Parameters<typeof imageToolAnswers.created>[0] & { isDefault: boolean }} created */
+export function createAnswer(created) {
   const answer = imageToolAnswers.created(created);
-  if (!created.isDefault) return answer;
-  return adding(answer, selectedImage === undefined || selectedImage === created.name
-    ? "It is the project's default image."
-    : `It is the project's default image; a call that names no image still goes to ${selectedImage}.`);
+  return created.isDefault ? adding(answer, "It is the project's default image.") : answer;
 }
 
 /**
@@ -174,11 +165,7 @@ export function stopAnswer(result, all = false) {
   if (!all || stopped.length === 1) return { ...imageToolAnswers.stopped(stopped[0]), warnings };
   if (stopped.length === 0) {
     // Not "was running": the warnings say which images still run.
-    return {
-      summary: left.length === 0 ? "No image of this project was running." : "No image of this project was stopped.",
-      warnings,
-      fields: [],
-    };
+    return { summary: "No image of this project was stopped.", warnings, fields: [] };
   }
   return {
     summary: `Stopped ${texts.andList(stopped.map((each) => each.name))}; what they had not saved is lost.`,
@@ -194,23 +181,15 @@ export function stopAnswer(result, all = false) {
  * @param {ImageInfo} row
  */
 function leftRunning(row) {
-  return row.building
-    ? `Left ${row.name} running: it is still being created.`
-    : `Left ${row.name} running: ${row.endpointProblem}, so only image_stop with its name stops it.`;
+  return `Left ${row.name} running: ${row.building ? "it is still being created" : row.endpointProblem}.`;
 }
 
-/**
- * @param {{ name: string, clearedDefault?: boolean }} deleted
- * @param {string} [selectedImage] the image the server was started with
- */
-export function deleteAnswer(deleted, selectedImage) {
+/** @param {{ name: string, clearedDefault?: boolean }} deleted */
+export function deleteAnswer(deleted) {
   const answer = imageToolAnswers.deleted(deleted);
-  if (!deleted.clearedDefault) return answer;
-  return adding(answer, [
-    "It was the project's default image; the next image created becomes the default.",
-    ...(selectedImage === undefined || selectedImage === deleted.name
-      ? [] : [`A call that names no image still goes to ${selectedImage}.`]),
-  ].join(" "));
+  return deleted.clearedDefault
+    ? adding(answer, "It was the project's default image; the next image created becomes the default.")
+    : answer;
 }
 
 /**
