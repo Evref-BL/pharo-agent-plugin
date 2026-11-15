@@ -10,6 +10,7 @@ import { hostChoices } from "../src/hosts.js";
 import { readConfig, writeConfig } from "../src/project.js";
 import {
   callsOf,
+  defaultPharoMcpVersion,
   pinnedImage,
   plexusHook,
   readWorld,
@@ -85,7 +86,7 @@ test("image start of an image other than the default says to name it, as the ser
   process.env.PHARO_AGENT_PROJECTION = "off";
   try {
     await inProject(async (_root, printed) => {
-      await main(["image", "start", "p13"]);
+      await main(["image", "start", "p13", "--json"]);
       const started = JSON.parse(printed.join("\n"));
       assert.equal(started.name, "p13");
       assert.equal(
@@ -95,10 +96,121 @@ test("image start of an image other than the default says to name it, as the ser
       assert.equal(started.warning, undefined, "projections off by choice, so nothing to warn of");
 
       printed.length = 0;
-      await main(["image", "start"]);
+      await main(["image", "start", "--json"]);
       assert.equal(JSON.parse(printed.join("\n")).name, "dev");
       assert.equal(JSON.parse(printed.join("\n")).note, undefined, "a call that names no image already goes there");
     }, { images: { "proj-dev": pinnedImage(), "proj-p13": pinnedImage() } }, { defaultImage: "dev" });
+  } finally {
+    if (projection === undefined) delete process.env.PHARO_AGENT_PROJECTION;
+    else process.env.PHARO_AGENT_PROJECTION = projection;
+  }
+});
+
+// The terminal prints what the image tools answer over MCP, from the same
+// functions; a script reads today's JSON with --json.
+test("each image command prints its tool's text, and with --json the JSON it printed before", async () => {
+  const projection = process.env.PHARO_AGENT_PROJECTION;
+  process.env.PHARO_AGENT_PROJECTION = "off";
+  try {
+    await inProject(async (root, printed) => {
+      /** @param {string[]} args */
+      const said = async (args) => {
+        printed.length = 0;
+        await main(args);
+        return printed.join("\n");
+      };
+
+      assert.equal(
+        await said(["image", "templates"]),
+        [
+          "4 templates in 2 categories. Pharo 10.0 - 64bit is in more than one, so image_create needs its category.",
+          "Official distributions:",
+          "  Pharo 14.0 - 64bit (stable)",
+          "  Pharo 13.0 - 64bit",
+          "  Pharo 10.0 - 64bit",
+          "Pharo Mooc:",
+          "  Pharo 10.0 - 64bit",
+        ].join("\n"),
+      );
+      assert.equal(
+        await said(["image", "create", "dev", "--template", "Pharo 13.0 - 64bit"]),
+        "Created image dev from Pharo 13.0 - 64bit. It is not running yet; image_start starts it."
+          + " It is the project's default image.",
+      );
+      assert.equal(await said(["image", "start"]), "Started image dev as it was last saved.");
+      assert.equal(
+        await said(["image", "list"]),
+        [
+          "2 images, 1 running. The default image is dev.",
+          "images (each mcp=" + defaultPharoMcpVersion + "):",
+          '  dev state=running template="Pharo 13.0 - 64bit"',
+          '  p13 state=stopped pharo=13.0 template="Pharo 13.0 - 64bit (stable)"',
+        ].join("\n"),
+      );
+      assert.equal(await said(["image", "use", "p13"]), "The project's default image is p13 now.");
+      assert.equal(await said(["image", "stop", "dev"]), "Stopped image dev; what it had not saved is lost.");
+      assert.equal(
+        await said(["image", "delete", "p13"]),
+        "Deleted image p13 and its files. It was the project's default image; the next image created becomes the default.",
+      );
+      assert.equal(readConfig(root).defaultImage, undefined);
+    }, {
+      images: {
+        "proj-p13": pinnedImage({ template: "Pharo 13.0 - 64bit (stable)", pharoVersion: "130" }),
+      },
+    });
+  } finally {
+    if (projection === undefined) delete process.env.PHARO_AGENT_PROJECTION;
+    else process.env.PHARO_AGENT_PROJECTION = projection;
+  }
+});
+
+test("--json, anywhere among an image command's arguments, prints the object a script parsed before", async () => {
+  const projection = process.env.PHARO_AGENT_PROJECTION;
+  process.env.PHARO_AGENT_PROJECTION = "off";
+  try {
+    await inProject(async (_root, printed) => {
+      /** @param {string[]} args */
+      const parsed = async (args) => {
+        printed.length = 0;
+        await main(args);
+        return JSON.parse(printed.join("\n"));
+      };
+
+      assert.equal((await parsed(["image", "templates", "--json"])).templates.length, 4);
+      assert.deepEqual(
+        await parsed(["image", "create", "dev", "--template", "Pharo 13.0 - 64bit", "--json"]),
+        {
+          ok: true,
+          name: "dev",
+          diskName: "proj-dev",
+          path: "/fake-plexus/profiles/images/proj-dev/proj-dev.image",
+          running: false,
+          pids: [],
+          template: "Pharo 13.0 - 64bit",
+          mcp: { source: "pin", version: defaultPharoMcpVersion },
+          fromBase: true,
+          seconds: 0,
+          isDefault: true,
+        },
+      );
+      assert.deepEqual(await parsed(["image", "start", "--json", "dev"]), {
+        ok: true,
+        name: "dev",
+        pids: [90001],
+        endpoint: { url: "http://127.0.0.1:40001/", pid: 90001 },
+        display: "headless",
+        seconds: 0,
+      });
+      const listed = await parsed(["image", "list", "--json"]);
+      assert.equal(listed.ok, true);
+      assert.equal(listed.defaultImage, "dev");
+      assert.deepEqual(listed.images.map((image) => [image.name, image.running, image.isDefault]), [["dev", true, true]]);
+      assert.deepEqual(await parsed(["image", "use", "dev", "--json"]), { ok: true, defaultImage: "dev" });
+      assert.deepEqual(await parsed(["image", "--json", "use", "dev"]), { ok: true, defaultImage: "dev" });
+      assert.deepEqual(await parsed(["image", "stop", "--json"]), { ok: true, stopped: [{ name: "dev", killed: [90001] }] });
+      assert.deepEqual(await parsed(["image", "delete", "dev", "--json"]), { ok: true, name: "dev", clearedDefault: true });
+    });
   } finally {
     if (projection === undefined) delete process.env.PHARO_AGENT_PROJECTION;
     else process.env.PHARO_AGENT_PROJECTION = projection;
@@ -119,7 +231,7 @@ test("image create passes a script, and every start, to PLexus", async () => {
   await inProject(async (root, printed) => {
     const script = path.join(root, "load.st");
     fs.writeFileSync(script, "Transcript show: 'loaded'.\n");
-    await main(["image", "create", "mcp", "--template", "Pharo 14.0 - 64bit (stable)", "--script", script, "--every-start"]);
+    await main(["image", "create", "mcp", "--template", "Pharo 14.0 - 64bit (stable)", "--script", script, "--every-start", "--json"]);
 
     assert.equal(JSON.parse(printed.join("\n")).isDefault, true);
     assert.deepEqual(readWorld().images["proj-mcp"].mcp, { source: "script", script });
@@ -153,6 +265,8 @@ test("help is answered wherever the word lands without initializing a project", 
       [["image", "--help"], /pharo-agent image templates/],
       [["image", "create", "--help"], /first image created is the default/],
       [["image", "list", "--help"], /which are running now/],
+      [["image", "list", "--help"], /pharo-agent image list \[--json\][^]*--json prints the answer as JSON, for a script\./],
+      [["image", "--help"], /pharo-agent image stop \[<name>\] \[--all\] \[--json\]/],
       [["image", "templates", "--help"], /templates images can be created from/],
       [["image", "use", "--help"], /Make an image the default/],
       [["image", "delete", "--help"], /Delete a stopped image/],

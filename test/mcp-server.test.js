@@ -996,6 +996,18 @@ test("a start of an image other than the default says to name it in its tools' c
 
 // 477 characters of JSON said the pids, the endpoint and the seconds; an
 // agent acts on where the source is.
+// The mount root is the project's to choose, so the answer gives the path
+// rather than the description a place it may not be.
+test("image_start's description says its answer gives where the source mounts", () => {
+  inProject((cwd) => {
+    assert.equal(
+      listTools(cwd).tools.find((tool) => tool.name === "image_start").description,
+      "Start an image; it refuses one that is already running. Its tools are listed once it answers."
+        + " On macOS and Linux its source also mounts as files, at the path its answer gives.",
+    );
+  });
+});
+
 test("a start that mounts the source says where, from the project", {
   skip: !["darwin", "linux"].includes(process.platform) && "PIFS mounts on macOS and Linux only",
 }, () => {

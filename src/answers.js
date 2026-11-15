@@ -58,6 +58,16 @@ export function callsNote(name, defaultImage) {
 }
 
 /**
+ * What `pharo-agent image use` did. It has no MCP tool: setting the default
+ * is the terminal's.
+ *
+ * @param {string} name
+ */
+export function defaultChosen(name) {
+  return `The project's default image is ${name} now.`;
+}
+
+/**
  * A start or a stop through the server that names no image, in a project
  * with no default. The terminal says it with its own commands.
  */

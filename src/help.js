@@ -8,12 +8,12 @@ const commands = {
     example: `init --host ${hostIds[0]}`,
   },
   "image templates": {
-    usage: "image templates",
+    usage: "image templates [--json]",
     description: "List the templates images can be created from, with their categories.",
     example: "image templates",
   },
   "image create": {
-    usage: "image create <name> --template <name> [--category <name>] [--script <file> [--every-start]]",
+    usage: "image create <name> --template <name> [--category <name>] [--script <file> [--every-start]] [--json]",
     description: "Create an image from a template, with the pinned Pharo MCP in it, without starting it.\n"
       + "Name it after what it is for, like a branch. The first image created is the default.\n"
       + "--category is for a name two categories offer. --script files in your own Smalltalk\n"
@@ -21,31 +21,31 @@ const commands = {
     example: "image create pretty-print-formatter --template '<template name>'",
   },
   "image list": {
-    usage: "image list",
+    usage: "image list [--json]",
     description: "List this project's images, the default, which are running now, and the mount of each\n"
       + "running one.",
     example: "image list",
   },
   "image use": {
-    usage: "image use <name>",
+    usage: "image use <name> [--json]",
     description: "Make an image the default.",
     example: "image use dev",
   },
   "image start": {
-    usage: "image start [<name>] [--display interactive]",
+    usage: "image start [<name>] [--display interactive] [--json]",
     description: "Start an image, the default one without a name; an image already running is refused.\n"
       + "Others keep running. On macOS and Linux its source mounts as files, unless\n"
       + "PHARO_AGENT_PROJECTION=off. --display interactive opens its window.",
     example: "image start dev",
   },
   "image stop": {
-    usage: "image stop [<name>] [--all]",
+    usage: "image stop [<name>] [--all] [--json]",
     description: "Kill an image without saving it, and unmount its source: the default one without a\n"
       + "name, or --all of this project's running images.",
     example: "image stop dev",
   },
   "image delete": {
-    usage: "image delete <name>",
+    usage: "image delete <name> [--json]",
     description: "Delete a stopped image and its files.",
     example: "image delete dev",
   },
@@ -67,6 +67,9 @@ const commands = {
   },
 };
 
+// Each image command prints what its image tool answers, a text for a reader.
+const imageJson = "--json prints the answer as JSON, for a script.";
+
 export function usage(args = []) {
   const key = args[0] === "image" && args[1]
     ? `${args[0]} ${args[1]}`
@@ -74,7 +77,8 @@ export function usage(args = []) {
   const command = Object.hasOwn(commands, key) ? commands[key]
     : Object.hasOwn(commands, args[0]) ? commands[args[0]] : undefined;
   if (command) {
-    return `Usage:\n  pharo-agent ${command.usage}\n\n${command.description}\n\nExample:\n  pharo-agent ${command.example}`;
+    const description = key.startsWith("image ") ? `${command.description}\n${imageJson}` : command.description;
+    return `Usage:\n  pharo-agent ${command.usage}\n\n${description}\n\nExample:\n  pharo-agent ${command.example}`;
   }
   const entries = Object.entries(commands)
     .filter(([name]) => args[0] !== "image" || name.startsWith("image "));

@@ -106,7 +106,8 @@ const projectTools = [
     name: "image_start",
     description:
       "Start an image; it refuses one that is already running. Its tools are "
-      + "listed once it answers. On macOS and Linux its source also mounts as files.",
+      + "listed once it answers. On macOS and Linux its source also mounts as files, "
+      + "at the path its answer gives.",
     inputSchema: schema({
       name: nameProperty,
       display: {
