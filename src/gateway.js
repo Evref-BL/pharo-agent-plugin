@@ -105,8 +105,8 @@ async function namedTarget(images, name) {
   return { name, images, endpoint: await images.endpoint(name) };
 }
 
-// Raises the least a forwarded call waits, for a host or a machine slower
-// than the image's own limits allow for.
+// Raises the least a forwarded call waits: a call to a tool that keeps no
+// time limit of its own, or whose schema no listing gave, waits only that.
 const callSecondsVariable = "PHARO_AGENT_CALL_SECONDS";
 
 /** PLexus's minute: a forwarded call never waits less than it did before the variable. */

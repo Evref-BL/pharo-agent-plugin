@@ -115,7 +115,7 @@ export function projectionStartOutcome(printString) {
 // with an evaluation time limit stops an evaluation at 30 s unless told
 // otherwise, which a cold load may outlast. Not measured on its own: the one
 // trace of a start, pifs-1's, created, started and mounted in 29.7 s in all,
-// and this leaves four times that. The forwarded call waits it plus 30 s.
+// and this leaves four times that. The call waits at least this plus 30 s.
 export const pifsStartSeconds = 120;
 
 export function pifsStopCode(projectionPort) {
