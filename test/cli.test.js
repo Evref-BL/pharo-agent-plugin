@@ -352,6 +352,22 @@ test("a tool call reaches the default image, its arguments read from the schema"
   }, { defaultImage: "dev" });
 });
 
+// test_run's own limit is 90 s by default: cut at a minute, its answer was lost.
+test("a tool call waits as the schema it read its arguments from allows", async () => {
+  const testRun = { type: "object", properties: { package: { type: "string" }, timeoutSeconds: { type: "integer", default: 90 } } };
+  await inProject(async () => {
+    await main(["test_run", "--package", "Foo"]);
+    await main(["test_run"]);
+
+    assert.deepEqual(callsOf("callTool").map((call) => call.options), [
+      { inputSchema: testRun, minimumMs: 60_000 },
+      { minimumMs: 60_000 },
+    ]);
+  }, {
+    images: { "proj-dev": runningImage(41000, { tools: [{ name: "test_run", inputSchema: testRun }] }) },
+  }, { defaultImage: "dev" });
+});
+
 test("a tool call that fails says on stderr what became of the image, and fails the command", async () => {
   await inProject(async (root) => {
     const result = run(["image_evaluate", "--image", "p13"], root);

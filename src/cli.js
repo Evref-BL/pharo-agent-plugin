@@ -192,11 +192,13 @@ async function runTool([toolName, ...words]) {
     return 0;
   }
   const target = await imageTarget(findProjectRoot(), image);
-  const argumentsValue = help.rest.length === 0 ? {}
-    : toolArguments(toolName, help.rest, (await toolContract(target, toolName)).inputSchema);
+  const contract = help.rest.length === 0 ? undefined : await toolContract(target, toolName);
+  const argumentsValue = contract ? toolArguments(toolName, help.rest, contract.inputSchema) : {};
   let result;
   try {
-    result = await callImageTool(target, toolName, argumentsValue);
+    // The schema read for the arguments also gives the time limit the image
+    // keeps for the call, which the wait outlasts.
+    result = await callImageTool(target, toolName, argumentsValue, contract?.inputSchema ? { inputSchema: contract.inputSchema } : {});
   } catch (error) {
     // Said on stderr, with exit 1: what the failure did to the image.
     const failed = await callFailedText(target, toolName, error);
