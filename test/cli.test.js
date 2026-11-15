@@ -92,6 +92,7 @@ test("image start of an image other than the default says to name it, as the ser
         started.note,
         'Pass image: "p13" to its tools: a call that names no image goes to dev, the default image.',
       );
+      assert.equal(started.warning, undefined, "projections off by choice, so nothing to warn of");
 
       printed.length = 0;
       await main(["image", "start"]);

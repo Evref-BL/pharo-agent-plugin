@@ -956,9 +956,9 @@ test("a start through the server says the tool list changed", () => {
 
     assert.equal(served.status, 0, served.stderr);
     assert.equal(
-      textOf({ served, result }).split("\n")[0],
+      textOf({ served, result }),
       "Started image dev as it was last saved.",
-      "a call that names no image already goes there",
+      "a call that names no image already goes there, and the projection is off by choice",
     );
     assert.ok(messages.some((message) => message.method === "notifications/tools/list_changed"));
     assert.notEqual(readWorld().images["proj-dev"].running, undefined);
@@ -986,11 +986,35 @@ test("a start of an image other than the default says to name it in its tools' c
 
     assert.equal(served.status, 0, served.stderr);
     assert.equal(
-      textOf({ served, result }).split("\n")[0],
+      textOf({ served, result }),
       'Started image p13 as it was last saved. Pass image: "p13" to its tools: a call that names no image'
         + " goes to dev, the default image.",
     );
   }, { images: { "proj-dev": runningImage(41000), "proj-p13": pinnedImage() } }, { defaultImage: "dev" });
+});
+
+// 477 characters of JSON said the pids, the endpoint and the seconds; an
+// agent acts on where the source is.
+test("a start that mounts the source says where, from the project", {
+  skip: !["darwin", "linux"].includes(process.platform) && "PIFS mounts on macOS and Linux only",
+}, () => {
+  inProject((cwd) => {
+    const answer = serve({
+      cwd,
+      env: { PHARO_AGENT_PROJECTION: "" },
+      request: { method: "tools/call", params: { name: "image_start", arguments: { display: "interactive" } } },
+    });
+    assert.equal(
+      textOf(answer),
+      "Started image dev as it was last saved, with its window open.\nmount: .pharo-agent/mounts/dev",
+    );
+  }, {
+    images: {
+      "proj-dev": pinnedImage({
+        answers: [{ tool: "image_evaluate", contains: "startMountedAt:", result: { content: [{ type: "text", text: "60341" }] } }],
+      }),
+    },
+  }, { defaultImage: "dev" });
 });
 
 test("a stop through the server says the tool list changed", () => {

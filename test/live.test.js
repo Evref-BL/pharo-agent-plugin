@@ -3,6 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
+import { imageToolAnswers } from "@evref-bl/plexus";
 import { startAnswer, stopAnswer } from "../src/answers.js";
 import { callImageTool, imageTarget } from "../src/gateway.js";
 import { pifsRelease, startAgentImage, stopAgentImage } from "../src/live.js";
@@ -75,7 +76,11 @@ test("a start mounts the image's source and records the projection", mounts, asy
     assert.equal(started.name, "dev");
     assert.equal(started.mountPath, mountPath);
     assert.equal(started.projectionPort, 60341);
-    assert.equal(started.mountWarning, undefined);
+    assert.equal(started.notMounted, undefined);
+    assert.equal(
+      imageToolAnswers.render(startAnswer(root, started, "dev")),
+      "Started image dev as it was last saved.\nmount: .pharo-agent/mounts/dev",
+    );
     assert.deepEqual(readProjection(root, "dev"), { mountPath, projectionPort: 60341, pifsRelease, pids: started.pids });
     const [evaluation] = callsOf("callTool");
     assert.equal(evaluation.tool, "image_evaluate");
@@ -93,23 +98,40 @@ test("no name starts the default image, as headless unless asked", mounts, async
   }, { images: { "proj-dev": pinnedImage({ answers: [projectionPort] }) } }, { config: { defaultImage: "dev" } });
 });
 
-test("PHARO_AGENT_PROJECTION=off starts the image without asking PIFS", async () => {
+// Chosen, so nothing to warn of: an answer without a mount line says there
+// is no mount.
+test("PHARO_AGENT_PROJECTION=off starts the image without asking PIFS, and says nothing of it", async () => {
   await inProject(async (root) => {
     const started = await startAgentImage(root, "dev");
 
     assert.equal(started.mountPath, undefined);
-    assert.match(started.mountWarning ?? "", /PHARO_AGENT_PROJECTION=off/);
-    assert.match(started.mountWarning ?? "", /Image dev is running with its Pharo tools/);
+    assert.equal(started.notMounted, undefined);
+    assert.equal(imageToolAnswers.render(startAnswer(root, started, "dev")), "Started image dev as it was last saved.");
     assert.deepEqual(callsOf("callTool"), []);
     assert.equal(readProjection(root, "dev"), undefined);
   }, { images: { "proj-dev": pinnedImage() } }, { projection: "off" });
+});
+
+test("a PHARO_AGENT_PROJECTION other than off starts the image unmounted, and says why", async () => {
+  await inProject(async (root) => {
+    const started = await startAgentImage(root, "dev");
+
+    assert.deepEqual(startAnswer(root, started, "dev").warnings, [
+      'No source is mounted: PHARO_AGENT_PROJECTION takes only off, and is "0". Unset it to mount sources'
+        + " where the platform allows. Read and edit its code through its tools.",
+    ]);
+    assert.deepEqual(callsOf("callTool"), []);
+  }, { images: { "proj-dev": pinnedImage() } }, { projection: "0" });
 });
 
 test("a projection PIFS refuses leaves the image running, with the reason", mounts, async () => {
   await inProject(async (root) => {
     const started = await startAgentImage(root, "dev");
 
-    assert.match(started.mountWarning ?? "", /^FUSE needs fusermount3\./);
+    assert.deepEqual(startAnswer(root, started, "dev").warnings, [
+      "No source is mounted: FUSE needs fusermount3. Set PHARO_AGENT_PROJECTION=off to start images"
+        + " without trying to mount. Read and edit its code through its tools.",
+    ]);
     assert.equal(readWorld().images["proj-dev"].running !== undefined, true);
     assert.equal(readProjection(root, "dev"), undefined);
   }, {
@@ -123,15 +145,59 @@ test("a projection PIFS refuses leaves the image running, with the reason", moun
 
 // Nothing then says whether PIFS mounted; a mount nothing records would
 // outlive the session, so the image goes, and its daemon unmounts with it.
-test("a projection that answers nothing readable stops the image", mounts, async () => {
+test("a projection that answers nothing readable stops the image, and says so", mounts, async () => {
   await inProject(async (root) => {
-    await assert.rejects(() => startAgentImage(root, "dev"), /PIFS did not report a projection port/);
+    const stderr = await logged(() => assert.rejects(
+      () => startAgentImage(root, "dev"),
+      { message: "Image dev started, but was stopped again because PIFS answered no projection port."
+        + " Start it with PHARO_AGENT_PROJECTION=off to skip the mount." },
+    ));
+    assert.deepEqual(stderr, [
+      'pharo-agent: PIFS answered no projection port for dev: {"content":[{"type":"text","text":"a Dictionary()"}]}',
+    ]);
     assert.deepEqual(callsOf("stop").map((call) => call.name), ["dev"]);
     assert.equal(readWorld().images["proj-dev"].running, undefined);
   }, {
     images: {
       "proj-dev": pinnedImage({
         answers: [{ tool: "image_evaluate", contains: "startMountedAt:", result: { content: [{ type: "text", text: "a Dictionary()" }] } }],
+      }),
+    },
+  });
+});
+
+// The evaluation is this package's, not the agent's: what PLexus would say of
+// a call the agent made, that the image still runs, is no longer true.
+test("a mount whose evaluation hangs up stops the image, and says the mount failed", mounts, async () => {
+  await inProject(async (root) => {
+    await assert.rejects(
+      () => startAgentImage(root, "dev"),
+      { message: "Image dev started, but was stopped again because mounting its source failed: socket hang up."
+        + " Start it with PHARO_AGENT_PROJECTION=off to skip the mount." },
+    );
+    assert.equal(readWorld().images["proj-dev"].running, undefined);
+    assert.equal(readProjection(root, "dev"), undefined);
+  }, {
+    images: {
+      "proj-dev": pinnedImage({
+        answers: [{ tool: "image_evaluate", contains: "startMountedAt:", error: "socket hang up", kind: "closed" }],
+      }),
+    },
+  });
+});
+
+test("a failed mount whose stop fails too says both", mounts, async () => {
+  await inProject(async (root) => {
+    await assert.rejects(
+      () => startAgentImage(root, "dev"),
+      { message: "Image dev started, but mounting its source failed: socket hang up."
+        + " Stopping it again failed as well: the launcher did not answer." },
+    );
+  }, {
+    images: {
+      "proj-dev": pinnedImage({
+        stopFails: "the launcher did not answer.",
+        answers: [{ tool: "image_evaluate", contains: "startMountedAt:", error: "socket hang up.", kind: "closed" }],
       }),
     },
   });

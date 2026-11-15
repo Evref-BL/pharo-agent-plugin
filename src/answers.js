@@ -12,13 +12,13 @@ const { texts } = imageToolAnswers;
 /**
  * What a start through this package did: PLexus's start, the image as listed
  * before it, the mount when its source mounted, and otherwise why not, when
- * that is to be said.
+ * that is to be said: not when projections are off, or the platform has none.
  *
  * @typedef {import("@evref-bl/plexus").StartResult & {
  *   row: ImageInfo,
  *   mountPath?: string,
  *   projectionPort?: number,
- *   mountWarning?: string,
+ *   notMounted?: string,
  * }} AgentStart
  */
 /**
@@ -64,6 +64,16 @@ export function callsNote(name, defaultImage) {
 export function noDefaultImage() {
   return "No image is named, and this project has no default image. Name one, or create one with"
     + " image_create; the first image created becomes the default.";
+}
+
+/**
+ * Why a start mounted no source, said once its tools answer: PIFS's reason,
+ * or a projection setting the plugin does not take.
+ *
+ * @param {string} reason
+ */
+export function noSourceMounted(reason) {
+  return `No source is mounted: ${reason} Read and edit its code through its tools.`;
 }
 
 /** @param {ToolAnswer} answer @param {string | undefined} sentence */
@@ -132,7 +142,7 @@ export function startAnswer(projectRoot, start, defaultImage) {
   const answer = adding(imageToolAnswers.started(start, start.row), callsNote(start.name, defaultImage));
   return {
     ...answer,
-    warnings: [...answer.warnings, ...(start.mountWarning === undefined ? [] : [start.mountWarning])],
+    warnings: [...answer.warnings, ...(start.notMounted === undefined ? [] : [noSourceMounted(start.notMounted)])],
     fields: [
       ...answer.fields,
       ...(start.mountPath === undefined ? [] : [/** @type {[string, string]} */ (["mount", pathFrom(projectRoot, start.mountPath)])]),
@@ -211,7 +221,7 @@ function warningOf(answer) {
  * @param {ToolAnswer} answer
  */
 export function startJson(start, answer) {
-  const { row: _row, mountWarning: _mountWarning, ...result } = start;
+  const { row: _row, notMounted: _notMounted, ...result } = start;
   return { ...result, ...warningOf(answer) };
 }
 

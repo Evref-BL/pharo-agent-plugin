@@ -29,35 +29,30 @@ const projectedPlatforms = ["darwin", "linux"];
  * A machine that could mount may still be one that must not, so the
  * environment can turn projections off before anything is asked.
  *
+ * Turned off, or on a system PIFS has no daemon for, no source mounts by
+ * choice, and nothing is said: a start's answer without a mount says there is
+ * none. A setting it does not take is a mistake, and its reason is said.
+ *
  * @param {{
  *   env?: Record<string, string | undefined>,
  *   platform?: string,
  * }} [host]
+ * @returns {{ available: true } | { available: false, chosen: true } | { available: false, reason: string }}
  */
 export function projectionAvailability(host = {}) {
   const setting = (host.env ?? process.env)[projectionVariable];
   const platform = host.platform ?? process.platform;
-  if (setting === "off") {
-    return {
-      available: false,
-      reason: `Source projections are turned off by ${projectionVariable}=off.`,
-    };
-  }
+  if (setting === "off") return { available: false, chosen: true };
   if (setting) {
     // Any other value fails safe: an opt-out that ignored a typo, or a 0,
     // would mount on the very machine that asked not to be mounted on.
     return {
       available: false,
-      reason: `Source projections are off: ${projectionVariable} takes only off,`
-        + ` and is ${JSON.stringify(setting)}. Unset it to mount them where the platform allows.`,
+      reason: `${projectionVariable} takes only off, and is ${JSON.stringify(setting)}.`
+        + " Unset it to mount sources where the platform allows.",
     };
   }
-  if (!projectedPlatforms.includes(platform)) {
-    return {
-      available: false,
-      reason: `PIFS mounts source projections on macOS and Linux, not on this platform (${platform}).`,
-    };
-  }
+  if (!projectedPlatforms.includes(platform)) return { available: false, chosen: true };
   return { available: true };
 }
 
@@ -66,9 +61,9 @@ function sentence(text) {
   return /[.!?]$/.test(text) ? text : `${text}.`;
 }
 
-export function projectionUnavailableWarning(name, reason) {
-  return `${sentence(reason)} Image ${name} is running with its Pharo tools and no`
-    + " source projection; read and edit its code through the tools.";
+/** @param {string} text */
+function withoutFinalPeriod(text) {
+  return text.replace(/\.$/, "");
 }
 
 // The class-side PIFSServer messages this plugin sends into the image. The
@@ -160,6 +155,9 @@ export function resultPrintString(result) {
 }
 
 /**
+ * What PIFS answered: its port, or why it could not mount. An answer that
+ * reads as neither is nothing, and goes to the host's log as it came.
+ *
  * @param {import("./gateway.js").Target} target
  * @param {string} mountPath
  * @param {string} imageName
@@ -171,7 +169,7 @@ async function startProjection(target, mountPath, imageName) {
   // A refusal is PIFS's own: it stopped what it had started.
   const outcome = projectionStartOutcome(resultPrintString(result));
   if (!outcome) {
-    throw new Error(`PIFS did not report a projection port: ${JSON.stringify(result).slice(0, 500)}`);
+    console.error(`pharo-agent: PIFS answered no projection port for ${target.name}: ${JSON.stringify(result).slice(0, 500)}`);
   }
   return outcome;
 }
@@ -196,28 +194,36 @@ export async function startAgentImage(projectRoot, name, options = {}) {
   // this name belonged to a VM that is gone.
   forgetProjection(projectRoot, resolved);
   const availability = projectionAvailability();
+  if (!availability.available) {
+    return { ...started, row, ...("reason" in availability ? { notMounted: availability.reason } : {}) };
+  }
   const mountPath = resolveMountPath(projectRoot, readConfig(projectRoot), resolved);
   let projection;
-  if (!availability.available) {
-    projection = { reason: availability.reason };
-  } else {
+  let failure;
+  try {
+    projection = await startProjection({ name: resolved, images, endpoint: started.endpoint }, mountPath, row.diskName);
+    if (!projection) failure = "PIFS answered no projection port";
+  } catch (error) {
+    failure = `mounting its source failed: ${withoutFinalPeriod(error instanceof Error ? error.message : String(error))}`;
+  }
+  if (!projection) {
+    // Nothing says whether PIFS mounted, so stop the image rather than keep
+    // a mount nothing records: its daemon unmounts once the image is gone.
+    // Said as what happened to the image, since the call that failed is this
+    // package's, not one the agent made.
     try {
-      projection = await startProjection(
-        { name: resolved, images, endpoint: started.endpoint },
-        mountPath,
-        row.diskName,
-      );
-    } catch (error) {
-      // Nothing says whether PIFS mounted, so stop the image rather than keep
-      // a mount nothing records: its daemon unmounts once the image is gone.
-      await images.stop(resolved).catch(() => {});
-      throw error;
+      await images.stop(resolved);
+    } catch (stopError) {
+      throw new Error(`Image ${resolved} started, but ${failure}. Stopping it again failed as well: `
+        + `${withoutFinalPeriod(stopError instanceof Error ? stopError.message : String(stopError))}.`);
     }
+    throw new Error(`Image ${resolved} started, but was stopped again because ${failure}.`
+      + ` Start it with ${projectionVariable}=off to skip the mount.`);
   }
   if ("reason" in projection) {
     // The image and its tools are the point; the projection is the extra this
     // package bundles where the machine allows it.
-    return { ...started, row, mountWarning: projectionUnavailableWarning(resolved, projection.reason) };
+    return { ...started, row, notMounted: projection.reason };
   }
   recordProjection(projectRoot, resolved, {
     mountPath,

@@ -49,6 +49,7 @@ const scopePattern = /^[A-Za-z0-9][A-Za-z0-9._]{0,63}$/;
  *   building?: boolean,
  *   running?: { pids: number[], display?: string, endpoint?: { url: string, pid?: number }, endpointProblem?: string },
  *   startFails?: string,
+ *   stopFails?: string,
  *   unreachable?: boolean,
  *   hangs?: boolean,
  *   busy?: boolean,
@@ -332,6 +333,8 @@ export class Images {
     const world = this.record("stop", { name });
     writeWorld(world);
     const diskName = this.existing(world, name);
+    const { stopFails } = world.images[diskName];
+    if (stopFails) throw new PlexusError("stop-failed", stopFails);
     const killed = world.images[diskName].running?.pids ?? [];
     delete world.images[diskName].running;
     writeWorld(world);
