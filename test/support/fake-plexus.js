@@ -34,11 +34,14 @@ const scopePattern = /^[A-Za-z0-9][A-Za-z0-9._]{0,63}$/;
  *   rpcCode?: number,
  *   waitedMs?: number,
  *   stops?: boolean,
+ *   hangs?: boolean,
  * }} Answer
  *
  * An answer with an `error` rejects the call as PLexus's `callTool` does,
  * with the error's `kind`, and its `rpcCode` or `waitedMs` where it has one.
- * One that `stops` the image leaves it with no VM, as a VM that exits.
+ * One that `stops` the image leaves it with no VM, as a VM that exits. One
+ * that `hangs` answers nothing until its caller's signal aborts, and then
+ * rejects as cancelled, as PLexus's does, recording `callCancelled`.
  *
  * @typedef {{
  *   template?: string,
@@ -480,6 +483,16 @@ export async function callTool(endpoint, name, args = {}, options = {}) {
   const [diskName, image] = answering(world, endpoint);
   const answer = (image.answers ?? []).find((each) => each.tool === name
     && (each.contains === undefined || JSON.stringify(args).includes(each.contains)));
+  if (answer?.hangs) {
+    await new Promise((resolve) => {
+      if (signal?.aborted) resolve(undefined);
+      else signal?.addEventListener("abort", resolve, { once: true });
+    });
+    const cancelled = readWorld();
+    cancelled.calls.push({ op: "callCancelled", url: endpoint.url, tool: name });
+    writeWorld(cancelled);
+    throw Object.assign(new Error("MCP request cancelled"), { kind: "cancelled" });
+  }
   if (answer?.stops) changeImages({ [diskName]: { running: undefined } });
   if (answer?.error) {
     const { kind, rpcCode, waitedMs } = answer;

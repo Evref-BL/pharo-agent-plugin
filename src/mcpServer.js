@@ -136,6 +136,21 @@ const projectTools = [
 
 const projectToolNames = new Set(projectTools.map((tool) => tool.name));
 
+/** The names of this server's own tools, which the texts it answers may name. */
+export const imageToolNames = [...projectToolNames];
+
+// The one argument of a forwarded call this server reads: the rest is the
+// image's to check, against its own schema.
+const imageArgument = /** @type {const} */ ({ type: "object", properties: { image: { type: "string" } } });
+
+/**
+ * The input schema each running image listed for each of its tools, by image
+ * and then by tool, as of the last listing: a call passes it on, so that it
+ * waits as long as the image's own limit for the tool allows.
+ *
+ * @typedef {Map<string, Map<string, import("@modelcontextprotocol/sdk/types.js").Tool["inputSchema"]>>} ListedSchemas
+ */
+
 /** The image a call that names none goes to: the server's, or the project's. */
 function serverDefaultImage(projectRoot, selectedImage) {
   if (selectedImage !== undefined) return selectedImage;
@@ -168,6 +183,7 @@ export const listingTimeoutMs = 5_000;
  * @param {string | undefined} selectedImage
  * @param {() => void} listChanged
  * @param {AbortSignal} hostLeft
+ * @returns {Promise<{ tools: any[], schemas: ListedSchemas }>}
  */
 async function runningImageTools(projectRoot, selectedImage, listChanged, hostLeft) {
   let defaultImage;
@@ -179,7 +195,7 @@ async function runningImageTools(projectRoot, selectedImage, listChanged, hostLe
     rows = await images.list();
   } catch (error) {
     console.error(`pharo-agent: no image tools listed: ${error.message}`);
-    return [];
+    return { tools: [], schemas: new Map() };
   }
   // The default's first: where two images hold a tool, the schema listed is
   // the one a call naming no image meets.
@@ -204,6 +220,8 @@ async function runningImageTools(projectRoot, selectedImage, listChanged, hostLe
   const held = new Map();
   /** @type {Set<string>} */
   const listed = new Set();
+  /** @type {ListedSchemas} */
+  const schemas = new Map();
   listings.forEach((listing, index) => {
     const { name } = ordered[index];
     if (listing.status === "rejected") {
@@ -215,6 +233,7 @@ async function runningImageTools(projectRoot, selectedImage, listChanged, hostLe
       return;
     }
     listed.add(name);
+    schemas.set(name, new Map(listing.value.map((tool) => [tool.name, tool.inputSchema])));
     for (const tool of listing.value) {
       if (projectToolNames.has(tool.name)) continue;
       const entry = held.get(tool.name);
@@ -223,7 +242,10 @@ async function runningImageTools(projectRoot, selectedImage, listChanged, hostLe
     }
   });
   const absence = defaultAbsence(rows, listed, defaultImage, selectedImage !== undefined);
-  return [...held.values()].map(({ tool, holders }) => withImageSelector(tool, holders, defaultImage, absence));
+  return {
+    tools: [...held.values()].map(({ tool, holders }) => withImageSelector(tool, holders, defaultImage, absence)),
+    schemas,
+  };
 }
 
 /**
@@ -270,6 +292,11 @@ export async function serveImagesMcp(resolveProjectRoot, selectedImage) {
   // for answering late then has nobody to tell, and is asked nothing more.
   const hostLeft = new AbortController();
   process.stdin.once("end", () => hostLeft.abort());
+  // From the last listing: a call to a tool waits as long as the schema its
+  // image listed for it allows. A tool found through tool_search, which no
+  // listing names, has none.
+  /** @type {ListedSchemas} */
+  let listedSchemas = new Map();
 
   server.setRequestHandler(ListToolsRequestSchema, async () => {
     let projectRoot;
@@ -282,17 +309,17 @@ export async function serveImagesMcp(resolveProjectRoot, selectedImage) {
     }
     // A host gone by the time an image answers is nobody to tell.
     const listChanged = () => { server.sendToolListChanged().catch(() => {}); };
-    return {
-      tools: [
-        ...projectTools,
-        ...(await runningImageTools(projectRoot, selectedImage, listChanged, hostLeft.signal)),
-      ],
-    };
+    const { tools, schemas } = await runningImageTools(projectRoot, selectedImage, listChanged, hostLeft.signal);
+    listedSchemas = schemas;
+    return { tools: [...projectTools, ...tools] };
   });
 
-  server.setRequestHandler(CallToolRequestSchema, async (request) => {
+  // A call the host cancels aborts its signal: the forwarded request is
+  // dropped, and the SDK answers nothing for it. The host leaving does not
+  // cancel one, since a client may close its input and still read the answer.
+  server.setRequestHandler(CallToolRequestSchema, async (request, extra) => {
     try {
-      return await answerCall(request.params.name, request.params.arguments ?? {});
+      return await answerCall(request.params.name, request.params.arguments ?? {}, extra.signal);
     } catch (error) {
       return failure(error);
     }
@@ -301,12 +328,17 @@ export async function serveImagesMcp(resolveProjectRoot, selectedImage) {
   /**
    * @param {string} tool
    * @param {Record<string, unknown>} argumentsValue
+   * @param {AbortSignal} signal
    */
-  async function answerCall(tool, argumentsValue) {
+  async function answerCall(tool, argumentsValue, signal) {
     // Before the project: a call that breaks the schema it was offered is
-    // refused for that wherever it is made.
+    // refused for that wherever it is made. Of a forwarded call, only the
+    // image it names is this server's to check.
     const projectTool = projectTools.find((each) => each.name === tool);
-    const refusal = projectTool && imageToolAnswers.checkArguments(projectTool, argumentsValue);
+    const { image, ...imageArguments } = argumentsValue;
+    const refusal = projectTool
+      ? imageToolAnswers.checkArguments(projectTool, argumentsValue)
+      : imageToolAnswers.checkArguments({ name: tool, inputSchema: imageArgument }, image === undefined ? {} : { image });
     if (refusal) return textResult(refusal, true);
     // Throws when there is no project, which is the answer the caller needs.
     const projectRoot = resolveProjectRoot();
@@ -322,15 +354,15 @@ export async function serveImagesMcp(resolveProjectRoot, selectedImage) {
     // answers for any tool it holds. Refusing a name this list does not carry
     // would hide tools that tool_search just found, and the image's own error
     // is the better answer for a name nothing holds.
-    const { image, ...imageArguments } = argumentsValue;
     const target = await imageTarget(
       projectRoot,
-      typeof image === "string" ? image : undefined,
+      /** @type {string | undefined} */ (image),
       { defaultImage: selectedImage },
     );
+    const inputSchema = listedSchemas.get(target.name)?.get(tool);
     try {
       // The image's answer, an error or not, is the image's to word.
-      return await callImageTool(target, tool, imageArguments);
+      return await callImageTool(target, tool, imageArguments, { ...(inputSchema ? { inputSchema } : {}), signal });
     } catch (error) {
       const failed = await callFailedText(target, tool, error);
       if (failed === undefined) throw error;

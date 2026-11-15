@@ -184,6 +184,7 @@ async function session(cwd) {
   return {
     messages,
     request,
+    send,
     next,
     get stderr() { return stderr; },
     close() {
@@ -1068,13 +1069,89 @@ test("an image tool goes to the image its argument names, without that argument"
     assert.equal(served.status, 0, served.stderr);
     assert.deepEqual(result.content, [{ type: "text", text: "Point" }]);
     assert.deepEqual(callsOf("callTool"), [
-      { op: "callTool", url: "http://127.0.0.1:42000/", tool: "class_get", arguments: { name: "Point" }, options: { minimumMs: 60_000 } },
+      {
+        op: "callTool",
+        url: "http://127.0.0.1:42000/",
+        tool: "class_get",
+        arguments: { name: "Point" },
+        options: { minimumMs: 60_000, signal: true },
+      },
     ]);
   }, {
     images: {
       "proj-dev": runningImage(41000),
       "proj-ci": runningImage(42000, { answers: [{ tool: "class_get", result: { content: [{ type: "text", text: "Point" }] } }] }),
     },
+  }, { defaultImage: "dev" });
+});
+
+// The rest of a forwarded call is the image's to check, against its own
+// schema; which image it goes to is this server's.
+test("a forwarded call naming its image by anything but a string is refused, and nothing is called", () => {
+  inProject((cwd) => {
+    assert.equal(
+      refusalOf(callTool(cwd, "class_search", { image: 3, query: "Point" })),
+      "Invalid arguments for class_search. image must be string, not integer.",
+    );
+    assert.equal(
+      refusalOf(callTool(cwd, "class_search", { image: " " })),
+      "Invalid arguments for class_search. image is blank; leave it out or give it a value.",
+    );
+    assert.deepEqual(callsOf("callTool"), []);
+    assert.deepEqual(callsOf("list"), [], "refused before any image is looked for");
+  }, { images: { "proj-dev": runningImage(41000) } }, { defaultImage: "dev" });
+});
+
+// A forwarded call waits longer than the image's own limit for it, which the
+// schema the image listed gives: test_run's 90 s default was cut at 60.
+test("a forwarded call passes on the schema its own image listed for the tool, and the host's signal", async () => {
+  await inProject(async (cwd) => {
+    const server = await session(cwd);
+    try {
+      await server.request("tools/list");
+      await server.request("tools/call", { name: "test_run", arguments: { image: "ci", package: "Foo" } });
+      await server.request("tools/call", { name: "test_run", arguments: { package: "Foo" } });
+      await server.request("tools/call", { name: "repository_commit", arguments: { image: "ci" } });
+
+      assert.deepEqual(callsOf("callTool").map((call) => [call.url, call.tool, call.options]), [
+        ["http://127.0.0.1:42000/", "test_run", { inputSchema: testRunOf(30), minimumMs: 60_000, signal: true }],
+        ["http://127.0.0.1:41000/", "test_run", { inputSchema: testRunOf(90), minimumMs: 60_000, signal: true }],
+        ["http://127.0.0.1:42000/", "repository_commit", { minimumMs: 60_000, signal: true }],
+      ]);
+    } finally {
+      server.close();
+    }
+  }, {
+    images: {
+      "proj-dev": runningImage(41000, { tools: [{ name: "test_run", inputSchema: testRunOf(90) }] }),
+      "proj-ci": runningImage(42000, { tools: [{ name: "test_run", inputSchema: testRunOf(30) }] }),
+    },
+  }, { defaultImage: "dev" });
+});
+
+/** @param {number} seconds */
+function testRunOf(seconds) {
+  return { type: "object", properties: { package: { type: "string" }, timeoutSeconds: { type: "integer", default: seconds } } };
+}
+
+// The host gave up on the call: the request in flight is dropped, and the
+// call is answered nothing, which the SDK ensures for an aborted request.
+test("a call the host cancels is dropped, and answered nothing", async () => {
+  await inProject(async (cwd) => {
+    const server = await session(cwd);
+    try {
+      server.send({ id: 100, method: "tools/call", params: { name: "image_evaluate", arguments: { code: "[ true ] whileTrue" } } });
+      await eventually(() => callsOf("callTool").length === 1, "the call reaching the image", 10_000);
+      server.send({ method: "notifications/cancelled", params: { requestId: 100, reason: "the host gave up" } });
+      await eventually(() => callsOf("callCancelled").length === 1, "the call dropped", 10_000);
+      await server.request("ping");
+
+      assert.equal(server.messages.some((message) => message.id === 100), false, "no answer to a cancelled call");
+    } finally {
+      server.close();
+    }
+  }, {
+    images: { "proj-dev": runningImage(41000, { answers: [{ tool: "image_evaluate", hangs: true }] }) },
   }, { defaultImage: "dev" });
 });
 
@@ -1112,6 +1189,11 @@ test("a forwarded call whose connection closes says what became of the image", (
       "Image dev runs, but refused the connection for class_get, so the call was not made.",
     );
     assert.equal(
+      refusalOf(callTool(cwd, "test_run", { package: "Slow" })),
+      "Image dev did not answer test_run within 120 s, and still runs: it may still be working on the call."
+        + " image_stop kills it without saving, and image_start then starts it as it was last saved.",
+    );
+    assert.equal(
       refusalOf(callTool(cwd, "image_evaluate", { code: "quit" })),
       "Image dev stopped before answering image_evaluate. Start it with image_start; it starts as it was last saved.",
     );
@@ -1119,6 +1201,7 @@ test("a forwarded call whose connection closes says what became of the image", (
     images: {
       "proj-dev": runningImage(41000, {
         answers: [
+          { tool: "test_run", error: "MCP request timed out after 120000ms", kind: "timeout", waitedMs: 120_000 },
           { tool: "image_evaluate", contains: "save", error: "socket hang up", kind: "closed" },
           { tool: "class_get", error: "connect ECONNREFUSED 127.0.0.1:41000", kind: "refused" },
           { tool: "image_evaluate", contains: "quit", error: "socket hang up", kind: "closed", stops: true },
