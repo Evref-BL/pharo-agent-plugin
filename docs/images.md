@@ -2,7 +2,9 @@
 
 The commands the project's Pharo guidance hands to the agent, written out here
 for a human reading along. With the plugin enabled, each `image` command but
-`use` is also an MCP tool, `image_create` for `image create` and so on.
+`use` is also an MCP tool, `image_create` for `image create` and so on, and
+each command prints what its tool answers. `--json` prints the answer as JSON,
+for a script.
 
 ## What an image is
 
@@ -27,9 +29,9 @@ pharo-agent image templates
 pharo-agent image create dev --template 'Pharo 14.0 - 64bit (stable)'
 ```
 
-`image templates` lists every template the launcher offers, with its
-category. A name that two categories offer is marked `ambiguous`, and needs
-the category as well:
+`image templates` lists every template the launcher offers, under its
+category. A name that two categories offer is under both, and the answer says
+it needs the category as well:
 
 ```sh
 pharo-agent image create old --template 'Pharo 10.0 - 64bit' --category 'Pharo Mooc'
@@ -53,9 +55,10 @@ subject or parallel agent rather than share one, and to name it like a branch
 
 ## Starting and stopping
 
-`image start <name>` starts a stopped image, and answers once the image's MCP
-server does. It refuses an image a VM already runs, naming that VM's process.
-Images run headless; `--display interactive` opens the image's window.
+`image start <name>` starts a stopped image as it was last saved, and answers
+once the image's MCP server does. It refuses an image a VM already runs, and
+says whether its tools answer. Images run headless; `--display interactive`
+opens the image's window.
 
 `image stop <name>` kills the image's VM. It does not save: whatever the image
 has not saved is lost, so save through the image first when that matters.
@@ -68,8 +71,8 @@ Without a name, `image start` and `image stop` act on the default image. A
 tool command, `list` and `mcp` take `--image <name>`, which scopes a call
 rather than naming a subject, and the default image answers without it. Over
 `mcp`, each Pharo tool takes the same `image` argument. Starting an image other
-than the default, from the terminal or over `mcp`, answers a `note` saying to
-name it.
+than the default, from the terminal or over `mcp`, says to pass its name to its
+tools.
 
 ## When an image exits
 
@@ -82,21 +85,33 @@ daemon serving it watches the image.
 ## Where the source projection works
 
 An image and its Pharo tools run anywhere Node does. Projecting its source as
-files works on macOS, with nothing to install, and on Linux with FUSE 3. When
-the mount fails, `image start` keeps the image and passes on why:
+files works on macOS, with nothing to install, and on Linux with FUSE 3. A
+start that mounts says where, from the project root when the mount is inside
+it, and `image list` gives the same path as the image's `mount=`:
 
-```json
-{ "ok": true, "name": "dev",
-  "warning": "pharo-image-fs daemon exited before mounting /home/me/project/.pharo-agent/mounts/dev. The daemon logged: FUSE needs fusermount3, which the fuse3 package installs. Set PHARO_AGENT_PROJECTION=off to start images without trying to mount. Image dev is running with its Pharo tools and no source projection; read and edit its code through the tools." }
+```text
+Started image dev as it was last saved.
+mount: .pharo-agent/mounts/dev
 ```
 
-A start whose outcome PIFS does not report, such as a call that times out,
-stops the image instead, since its projection may have mounted anyway.
+When PIFS cannot mount, `image start` keeps the image and passes on why:
 
-The image is running and fully usable; `mountPath` and `projectionPort` are
-absent from `image list`, and `image stop` has nothing extra to unmount.
-Setting `PHARO_AGENT_PROJECTION=off` in the environment starts every image this
-way, wherever it runs, and the warning names the variable.
+```text
+Started image dev as it was last saved.
+Warning: No source is mounted: pharo-image-fs daemon exited before mounting /home/me/project/.pharo-agent/mounts/dev. The daemon logged: FUSE needs fusermount3, which the fuse3 package installs. Set PHARO_AGENT_PROJECTION=off to start images without trying to mount. Read and edit its code through its tools.
+```
+
+The image is running and fully usable. A start without a mount answers no
+`mount` line, its record in `image list` has no `mount=`, and `image stop` has
+nothing extra to unmount. A start whose outcome PIFS does not report, such as
+a call that fails, stops the image instead, since its projection may have
+mounted anyway, and says so.
+
+Setting `PHARO_AGENT_PROJECTION=off` in the environment starts every image
+without asking PIFS, wherever it runs, and so does a system PIFS has no daemon
+for: the answer has neither a `mount` line nor a warning. Any other value of
+the variable mounts nothing either, and its warning says the variable takes
+only `off`.
 
 ## An image made with another MCP
 
