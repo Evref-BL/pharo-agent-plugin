@@ -24,7 +24,7 @@ function stringsOf(file) {
 }
 
 // A text naming a tool the server does not serve sends an agent to look for
-// it. live.js is left out: it calls the image's own image_evaluate.
+// it. live.js is left out: it calls the image's own evaluation tool.
 test("the image tools the texts name are the ones the server serves", () => {
   const served = new Set(imageToolNames);
   /** @type {Map<string, string>} */
