@@ -14,6 +14,7 @@ import {
   version,
   withImageSelector,
 } from "./gateway.js";
+import { callFailedText } from "./answers.js";
 import { createImage, deleteImage, listImageTemplates, listImages, projectImages } from "./images.js";
 import { callsNote, startAgentImage, stopAgentImage } from "./live.js";
 import { readConfig } from "./project.js";
@@ -349,7 +350,13 @@ export async function serveImagesMcp(resolveProjectRoot, selectedImage) {
       typeof image === "string" ? image : undefined,
       { defaultImage: selectedImage },
     );
-    return toolResult(await callImageTool(target, tool, imageArguments));
+    try {
+      return toolResult(await callImageTool(target, tool, imageArguments));
+    } catch (error) {
+      const failed = await callFailedText(target, tool, error);
+      if (failed === undefined) throw error;
+      return textResult(failed, true);
+    }
   }
 
   await server.connect(new StdioServerTransport());

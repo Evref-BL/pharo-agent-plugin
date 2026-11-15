@@ -33,10 +33,12 @@ const scopePattern = /^[A-Za-z0-9][A-Za-z0-9._]{0,63}$/;
  *   kind?: "answered" | "no-handshake" | "timeout" | "refused" | "closed" | "other",
  *   rpcCode?: number,
  *   waitedMs?: number,
+ *   stops?: boolean,
  * }} Answer
  *
  * An answer with an `error` rejects the call as PLexus's `callTool` does,
  * with the error's `kind`, and its `rpcCode` or `waitedMs` where it has one.
+ * One that `stops` the image leaves it with no VM, as a VM that exits.
  *
  * @typedef {{
  *   template?: string,
@@ -472,9 +474,10 @@ export async function callTool(endpoint, name, args = {}, options = {}) {
     options: { ...waits, ...(signal ? { signal: true } : {}) },
   });
   writeWorld(world);
-  const [, image] = answering(world, endpoint);
+  const [diskName, image] = answering(world, endpoint);
   const answer = (image.answers ?? []).find((each) => each.tool === name
     && (each.contains === undefined || JSON.stringify(args).includes(each.contains)));
+  if (answer?.stops) changeImages({ [diskName]: { running: undefined } });
   if (answer?.error) {
     const { kind, rpcCode, waitedMs } = answer;
     throw Object.assign(new Error(answer.error), {

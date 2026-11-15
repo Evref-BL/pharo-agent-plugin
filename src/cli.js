@@ -1,3 +1,4 @@
+import { callFailedText } from "./answers.js";
 import { hostChoices, hostList } from "./hosts.js";
 import { usage } from "./help.js";
 import { initialize } from "./init.js";
@@ -180,7 +181,15 @@ async function runTool([toolName, ...words]) {
   const target = await imageTarget(findProjectRoot(), image);
   const argumentsValue = help.rest.length === 0 ? {}
     : toolArguments(toolName, help.rest, (await toolContract(target, toolName)).inputSchema);
-  const result = await callImageTool(target, toolName, argumentsValue);
+  let result;
+  try {
+    result = await callImageTool(target, toolName, argumentsValue);
+  } catch (error) {
+    // Said on stderr, with exit 1: what the failure did to the image.
+    const failed = await callFailedText(target, toolName, error);
+    if (failed === undefined) throw error;
+    throw new Error(failed);
+  }
   console.log(json.present ? JSON.stringify(result, null, 2) : resultText(result));
   return exitCodeForToolResult(result);
 }

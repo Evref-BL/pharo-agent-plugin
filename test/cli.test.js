@@ -237,6 +237,22 @@ test("a tool call reaches the default image, its arguments read from the schema"
   }, { defaultImage: "dev" });
 });
 
+test("a tool call that fails says on stderr what became of the image, and fails the command", async () => {
+  await inProject(async (root) => {
+    const result = run(["image_evaluate", "--image", "p13"], root);
+
+    assert.equal(result.status, 1);
+    assert.equal(result.stdout, "");
+    assert.equal(
+      result.stderr,
+      "Image p13 closed the connection before answering image_evaluate, and still runs: check whether"
+        + " the call took effect before making it again.\n",
+    );
+  }, {
+    images: { "proj-p13": runningImage(42000, { answers: [{ tool: "image_evaluate", error: "socket hang up", kind: "closed" }] }) },
+  });
+});
+
 test("a tool call to an image that is not running is PLexus's refusal", async () => {
   await inProject(async () => {
     await assert.rejects(

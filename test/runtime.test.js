@@ -3,7 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { toolFailureMessage, toolResult, withImageSelector } from "../src/gateway.js";
+import { toolResult, withImageSelector } from "../src/gateway.js";
 import {
   projectionAvailability,
   projectionStartOutcome,
@@ -157,16 +157,6 @@ test("a record holds only while a VM it was made with runs the image", () => {
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }
-});
-
-test("a tool the image says it does not have names an image made with another pin", () => {
-  const old = { name: "p13", mcp: /** @type {const} */ ({ source: "pin", version: "0.0.1" }) };
-  const message = toolFailureMessage("MCP error -32601: The method does not exist / is not available.", old);
-
-  assert.match(message, /-32601/);
-  assert.match(message, /Image p13 holds Pharo MCP 0\.0\.1/);
-  assert.equal(toolFailureMessage("ZeroDivide", old), "ZeroDivide");
-  assert.equal(toolFailureMessage("MCP error -32601: nope.", undefined), "MCP error -32601: nope.");
 });
 
 test("an image tool result that is already an MCP result is passed through", () => {

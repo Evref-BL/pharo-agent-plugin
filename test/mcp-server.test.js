@@ -867,12 +867,62 @@ test("an image tool goes to the image its argument names, without that argument"
     assert.equal(served.status, 0, served.stderr);
     assert.deepEqual(result.content, [{ type: "text", text: "Point" }]);
     assert.deepEqual(callsOf("callTool"), [
-      { op: "callTool", url: "http://127.0.0.1:42000/", tool: "class_get", arguments: { name: "Point" }, options: {} },
+      { op: "callTool", url: "http://127.0.0.1:42000/", tool: "class_get", arguments: { name: "Point" }, options: { minimumMs: 60_000 } },
     ]);
   }, {
     images: {
       "proj-dev": runningImage(41000),
       "proj-ci": runningImage(42000, { answers: [{ tool: "class_get", result: { content: [{ type: "text", text: "Point" }] } }] }),
+    },
+  }, { defaultImage: "dev" });
+});
+
+// A tool an MCP older than 2.1.0 holds without listing it is answered as
+// unknown, and the bare -32601 sent a reader looking for a tool that is there.
+test("a -32601 from an image on an MCP older than 2.1.0 says it may hold the tool", () => {
+  inProject((cwd) => {
+    assert.equal(
+      refusalOf(callTool(cwd, "package_list", {})),
+      "Image dev answered that it has no tool package_list, but its Pharo MCP 0.0.1 may hold the tool"
+        + " without listing it. Recreating the image gives it the current MCP.",
+    );
+  }, {
+    images: {
+      "proj-dev": runningImage(41000, {
+        mcp: { source: "pin", version: "0.0.1" },
+        answers: [{ tool: "package_list", error: "MCP error -32601: The method does not exist", kind: "answered", rpcCode: -32601 }],
+      }),
+    },
+  }, { defaultImage: "dev" });
+});
+
+// A save on MCP 3.8.0 closes the connection once it has saved, and "socket
+// hang up" read as a save that failed: agents restarted the image to make
+// sure, losing what they had not saved since.
+test("a forwarded call whose connection closes says what became of the image", () => {
+  inProject((cwd) => {
+    assert.equal(
+      refusalOf(callTool(cwd, "image_evaluate", { code: "save" })),
+      "Image dev closed the connection before answering image_evaluate, and still runs: check whether"
+        + " the call took effect before making it again.",
+    );
+    assert.equal(
+      refusalOf(callTool(cwd, "class_get", { name: "Point" })),
+      "Image dev runs, but refused the connection for class_get, so the call was not made.",
+    );
+    assert.equal(
+      refusalOf(callTool(cwd, "image_evaluate", { code: "quit" })),
+      "Image dev stopped before answering image_evaluate. Start it with image_start; it starts as it was last saved.",
+    );
+  }, {
+    images: {
+      "proj-dev": runningImage(41000, {
+        answers: [
+          { tool: "image_evaluate", contains: "save", error: "socket hang up", kind: "closed" },
+          { tool: "class_get", error: "connect ECONNREFUSED 127.0.0.1:41000", kind: "refused" },
+          { tool: "image_evaluate", contains: "quit", error: "socket hang up", kind: "closed", stops: true },
+        ],
+      }),
     },
   }, { defaultImage: "dev" });
 });

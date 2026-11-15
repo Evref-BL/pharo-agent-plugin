@@ -88,9 +88,12 @@ function assign(parsed, name, value, property, toolName) {
 /**
  * The tool arguments the words give. `schema` is the tool's input schema;
  * `readStdin` answers standard input, for a value written as `-`.
+ *
+ * @returns {Record<string, unknown>}
  */
 export function toolArguments(toolName, words, schema, readStdin = () => fs.readFileSync(0, "utf8")) {
   const properties = schema?.properties ?? {};
+  /** @type {Record<string, unknown>} */
   const flags = {};
   let stdinUsed = false;
   const valueOf = (word) => {

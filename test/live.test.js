@@ -232,7 +232,7 @@ test("a call reaches the endpoint PLexus gives for the named image", async () =>
 
     assert.deepEqual(answer, { content: [{ type: "text", text: "Point" }] });
     assert.deepEqual(callsOf("callTool"), [
-      { op: "callTool", url: "http://127.0.0.1:42000/", tool: "class_get", arguments: { name: "Point" }, options: {} },
+      { op: "callTool", url: "http://127.0.0.1:42000/", tool: "class_get", arguments: { name: "Point" }, options: { minimumMs: 60_000 } },
     ]);
   }, {
     images: {
@@ -288,19 +288,42 @@ test("a default image running without an endpoint is PLexus's refusal, whatever 
   }, { config: { defaultImage: "dev" } });
 });
 
-test("a -32601 from an image made with another pin names the pin", async () => {
+// This package's own calls go through it, the PIFS start and stop among
+// them: said there, a failure would report a call the agent never made.
+test("a call that fails rejects with PLexus's error as it is", async () => {
   await inProject(async (root) => {
     const target = await imageTarget(root, "dev");
     await assert.rejects(
       () => callImageTool(target, "package_list", {}),
-      /-32601[\s\S]*Image dev holds Pharo MCP 0\.0\.1/,
+      (/** @type {any} */ error) => error.message === "MCP error -32601: The method does not exist"
+        && error.kind === "answered" && error.rpcCode === -32601,
+    );
+    await assert.rejects(
+      () => callImageTool(target, "image_evaluate", { code: "Smalltalk snapshot: true andQuit: false" }),
+      (/** @type {any} */ error) => error.message === "socket hang up" && error.kind === "closed",
     );
   }, {
     images: {
       "proj-dev": runningImage(41000, {
         mcp: { source: "pin", version: "0.0.1" },
-        answers: [{ tool: "package_list", error: "MCP error -32601: The method does not exist" }],
+        answers: [
+          { tool: "package_list", error: "MCP error -32601: The method does not exist", kind: "answered", rpcCode: -32601 },
+          { tool: "image_evaluate", error: "socket hang up", kind: "closed" },
+        ],
       }),
     },
   });
+});
+
+// A forwarded call waits longer than the image's own limit, which the schema
+// it listed gives, so that the image's answer to a call it stopped arrives
+// first.
+test("a call passes PLexus the schema it was listed with, the least it waits, and the signal", async () => {
+  await inProject(async (root) => {
+    const target = await imageTarget(root, "dev");
+    const inputSchema = { type: /** @type {const} */ ("object"), properties: { timeoutSeconds: { type: "integer", default: 90 } } };
+    await callImageTool(target, "test_run", { package: "Foo" }, { inputSchema, signal: new AbortController().signal });
+
+    assert.deepEqual(callsOf("callTool").map((call) => call.options), [{ inputSchema, minimumMs: 60_000, signal: true }]);
+  }, { images: { "proj-dev": runningImage(41000) } });
 });
