@@ -231,6 +231,53 @@ test("a projection that answers nothing readable stops the image, and says so", 
   });
 });
 
+// A cold start that outlasts the evaluation's limit is what the limit given
+// to the start is for: the image's own words say so, not a missing port.
+test("a mount the image answers with an error stops the image, and says what the image said", mounts, async () => {
+  const stopped = "Evaluation stopped after 120 s, its time limit.\nWhat it changed before then stays changed."
+    + "\nStopped in:\nZnClient>>executeRequestResponse";
+  await inProject(async (root) => {
+    const stderr = await logged(() => assert.rejects(
+      () => startAgentImage(root, "dev"),
+      { message: "Image dev started, but was stopped again because mounting its source failed:"
+        + " Evaluation stopped after 120 s, its time limit. Start it with PHARO_AGENT_PROJECTION=off to skip the mount." },
+    ));
+    assert.deepEqual(stderr, [`pharo-agent: dev answered the PIFS start with: ${stopped}`]);
+    assert.deepEqual(callsOf("stop").map((call) => call.name), ["dev"]);
+    assert.equal(readWorld().images["proj-dev"].running, undefined);
+    assert.equal(readProjection(root, "dev"), undefined);
+  }, {
+    images: {
+      "proj-dev": pinnedImage({
+        answers: [{ tool: "image_evaluate", contains: "startMountedAt:", result: { isError: true, content: [{ type: "text", text: stopped }] } }],
+      }),
+    },
+  });
+});
+
+// One line is the whole of what the image said, and the answer carries it.
+test("a mount the image answers with a one-line error logs nothing more", mounts, async () => {
+  await inProject(async (root) => {
+    const stderr = await logged(() => assert.rejects(
+      () => startAgentImage(root, "dev"),
+      { message: "Image dev started, but was stopped again because mounting its source failed:"
+        + " Evaluation ended the process running it, so it has no value to answer."
+        + " Start it with PHARO_AGENT_PROJECTION=off to skip the mount." },
+    ));
+    assert.deepEqual(stderr, []);
+  }, {
+    images: {
+      "proj-dev": pinnedImage({
+        answers: [{
+          tool: "image_evaluate",
+          contains: "startMountedAt:",
+          result: { isError: true, content: [{ type: "text", text: "Evaluation ended the process running it, so it has no value to answer." }] },
+        }],
+      }),
+    },
+  });
+});
+
 // The evaluation is this package's, not the agent's: what PLexus would say of
 // a call the agent made, that the image still runs, is no longer true.
 test("a mount whose evaluation hangs up stops the image, and says the mount failed", mounts, async () => {

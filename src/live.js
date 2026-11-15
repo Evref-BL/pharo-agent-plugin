@@ -166,7 +166,9 @@ export function resultPrintString(result) {
 
 /**
  * What PIFS answered: its port, or why it could not mount. An answer that
- * reads as neither is nothing, and goes to the host's log as it came.
+ * reads as neither is nothing, and goes to the host's log as it came. An
+ * error the image answers instead, such as an evaluation stopped at its time
+ * limit, is thrown with the line that says what happened.
  *
  * @param {import("./gateway.js").Target} target
  * @param {string} mountPath
@@ -184,6 +186,15 @@ async function startProjection(target, mountPath, imageName) {
     { code: pifsStartCode(mountPath, imageName), ...(limited ? { timeoutSeconds: pifsStartSeconds } : {}) },
     limited && evaluate ? { inputSchema: evaluate.inputSchema } : {},
   );
+  if (result?.isError === true) {
+    // The code catches PIFS's errors, so this is the image's own failure:
+    // the code stopped at its limit, never started, or did not compile. Its
+    // first line says which; the lines after it, where the code stopped and
+    // what the image advises whoever wrote the code, go to the host's log.
+    const text = textPartText(result);
+    if (text?.includes("\n")) console.error(`pharo-agent: ${target.name} answered the PIFS start with: ${text}`);
+    throw new Error(text?.split("\n")[0].trim() || "the image answered with an error and no text");
+  }
   // A refusal is PIFS's own: it stopped what it had started.
   const outcome = projectionStartOutcome(resultPrintString(result));
   if (!outcome) {
