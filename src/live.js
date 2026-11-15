@@ -111,11 +111,13 @@ export function projectionStartOutcome(printString) {
 }
 
 // How long the image may take over the projection start: a Metacello load of
-// PIFS from GitHub on a cold image, then a mount wait of at most 10 s. An MCP
-// with an evaluation time limit stops an evaluation at 30 s unless told
-// otherwise, which a cold load may outlast. Not measured on its own: the one
-// trace of a start, pifs-1's, created, started and mounted in 29.7 s in all,
-// and this leaves four times that. The call waits at least this plus 30 s.
+// PIFS from GitHub on a cold image, the daemon, then a mount wait of at most
+// 10 s. An MCP with an evaluation time limit stops an evaluation at 30 s
+// unless told otherwise, which a cold start may outlast. The load alone took
+// 4.9 s in a new image with no PIFS clone; the whole start, daemon and mount
+// with it, is not timed, and the one trace that holds one, pifs-1's, created,
+// started and mounted in 29.7 s in all. This leaves four times that. The call
+// waits at least this plus 30 s.
 export const pifsStartSeconds = 120;
 
 export function pifsStopCode(projectionPort) {
