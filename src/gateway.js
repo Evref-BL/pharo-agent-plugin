@@ -275,10 +275,3 @@ export function withImageSelector(tool, holders, defaultImage, absence) {
     },
   };
 }
-
-export function toolResult(data) {
-  if (data && typeof data === "object" && Array.isArray(data.content)) {
-    return data;
-  }
-  return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
-}

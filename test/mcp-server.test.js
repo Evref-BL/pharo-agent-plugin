@@ -6,10 +6,13 @@ import test from "node:test";
 import { spawn, spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { listingTimeoutMs } from "../src/mcpServer.js";
+import { pifsRelease } from "../src/live.js";
 import { readConfig, writeConfig } from "../src/project.js";
+import { recordProjection } from "../src/runtime.js";
 import {
   callsOf,
   changeImages,
+  defaultPharoMcpVersion,
   pinnedImage,
   plexusHook,
   readWorld,
@@ -199,8 +202,18 @@ function callTool(cwd, name, toolArguments = {}) {
   return serve({ cwd, request: { method: "tools/call", params: { name, arguments: toolArguments } } });
 }
 
-function answerOf(result) {
-  return JSON.parse(result.content[0].text);
+/**
+ * The text of an answer that is not a refusal: one text part, never JSON.
+ *
+ * @param {{ served?: any, result?: any, error?: any }} answer
+ */
+function textOf({ served, result, error }) {
+  assert.equal(error, undefined, served?.stderr);
+  assert.equal(result?.isError, undefined, JSON.stringify(result));
+  assert.equal(result.content.length, 1);
+  assert.equal(result.content[0].type, "text");
+  assert.doesNotMatch(result.content[0].text, /^\{/, "an answer for a model, not JSON for a program");
+  return result.content[0].text;
 }
 
 /**
@@ -650,10 +663,100 @@ test("image_list names the image the server is started with as the default", () 
     });
 
     assert.equal(served.status, 0, served.stderr);
-    const listed = answerOf(result);
-    assert.equal(listed.defaultImage, "ci");
-    assert.deepEqual(listed.images.map((image) => [image.name, image.isDefault]), [["ci", true], ["dev", false]]);
+    assert.equal(
+      textOf({ served, result }),
+      "2 images, 2 running. The default image is ci.\n"
+        + `images (each state=running pharo=14.0 template="Pharo 14.0 - 64bit (stable)" mcp=${defaultPharoMcpVersion}):\n`
+        + "  ci\n"
+        + "  dev",
+    );
   }, { images: { "proj-ci": runningImage(42000), "proj-dev": runningImage(41000) } }, { defaultImage: "dev" });
+});
+
+// main-1's two images answered 1,089 characters of JSON: disk names, paths,
+// pids and endpoints, none of which an agent acts on.
+test("image_list says each image's state, Pharo, template and MCP, and which is the default", () => {
+  inProject((cwd) => {
+    assert.equal(
+      textOf(callTool(cwd, "image_list")),
+      "2 images, 1 running. The default image is eval.\n"
+        + "images:\n"
+        + '  eval state=running pharo=14.0 template="Pharo 14.0 - 64bit (next stable)" mcp=script\n'
+        + `  p13 state=stopped pharo=13.0 template="Pharo 13.0 - 64bit (stable)" mcp=${defaultPharoMcpVersion}`,
+    );
+  }, {
+    images: {
+      "proj-eval": runningImage(41000, {
+        template: "Pharo 14.0 - 64bit (next stable)",
+        mcp: { source: "script", script: "/abs/MCP-14ae2d5.st" },
+      }),
+      "proj-p13": pinnedImage({ template: "Pharo 13.0 - 64bit (stable)", pharoVersion: "130" }),
+    },
+  }, { defaultImage: "eval" });
+});
+
+test("image_list says where a mounted source is, from the project when it is inside it", () => {
+  inProject((cwd) => {
+    const root = fs.realpathSync(cwd);
+    recordProjection(root, "dev", { mountPath: path.join(root, ".pharo-agent", "mounts", "dev"), projectionPort: 1, pifsRelease, pids: [91000] });
+    recordProjection(root, "ci", { mountPath: "/elsewhere/ci", projectionPort: 2, pifsRelease, pids: [92000] });
+
+    assert.equal(
+      textOf(callTool(cwd, "image_list")),
+      "3 images, 2 running. The default image is dev.\n"
+        + `images (each pharo=14.0 template="Pharo 14.0 - 64bit (stable)" mcp=${defaultPharoMcpVersion}):\n`
+        + "  ci state=running mount=/elsewhere/ci\n"
+        + "  dev state=running mount=.pharo-agent/mounts/dev\n"
+        + "  idle state=stopped",
+    );
+  }, {
+    images: { "proj-ci": runningImage(42000), "proj-dev": runningImage(41000), "proj-idle": pinnedImage() },
+  }, { defaultImage: "dev" });
+});
+
+test("image_list says when the default image does not exist, or there is none", () => {
+  const p13 = { images: { "proj-p13": pinnedImage() } };
+  inProject((cwd) => {
+    assert.equal(
+      textOf(callTool(cwd, "image_list")).split("\n")[0],
+      "1 image, none running. The default image, dev, does not exist: create it with image_create,"
+        + " or choose another default with pharo-agent image use <name>.",
+    );
+    assert.equal(
+      textOf(serve({ cwd, args: ["--image", "ci"], request: { method: "tools/call", params: { name: "image_list", arguments: {} } } }))
+        .split("\n")[0],
+      "1 image, none running. The default image, ci, does not exist: create it with image_create.",
+      "the image a server was started with stays that server's",
+    );
+  }, p13, { defaultImage: "dev" });
+  inProject((cwd) => {
+    assert.equal(
+      textOf(callTool(cwd, "image_list")).split("\n")[0],
+      "1 image, none running. There is no default image: name one on every call, or choose a default"
+        + " with pharo-agent image use <name>.",
+    );
+  }, p13);
+  inProject((cwd) => {
+    assert.equal(
+      textOf(callTool(cwd, "image_list")),
+      "No image yet: image_templates lists the templates image_create makes one from.",
+    );
+  });
+});
+
+test("image_templates names each template under its category, and which need theirs", () => {
+  inProject((cwd) => {
+    assert.equal(
+      textOf(callTool(cwd, "image_templates")),
+      "4 templates in 2 categories. Pharo 10.0 - 64bit is in more than one, so image_create needs its category.\n"
+        + "Official distributions:\n"
+        + "  Pharo 14.0 - 64bit (stable)\n"
+        + "  Pharo 13.0 - 64bit\n"
+        + "  Pharo 10.0 - 64bit\n"
+        + "Pharo Mooc:\n"
+        + "  Pharo 10.0 - 64bit",
+    );
+  });
 });
 
 test("a call that names no image goes to the default image while others run", () => {
@@ -726,16 +829,37 @@ test("an image is created through the server, and becomes the default", () => {
     });
 
     assert.equal(served.status, 0, served.stderr);
-    assert.equal(result.isError, undefined, served.stdout);
-    const created = answerOf(result);
-    assert.equal(created.ok, true);
-    assert.equal(created.name, "dev");
-    assert.equal(created.isDefault, true);
+    assert.equal(
+      textOf({ served, result }),
+      "Created image dev from Pharo 14.0 - 64bit (stable). It is not running yet; image_start starts it."
+        + " It is the project's default image.",
+    );
     assert.equal(readConfig(cwd).defaultImage, "dev");
 
-    const listed = answerOf(callTool(cwd, "image_list").result);
-    assert.equal(listed.defaultImage, "dev");
-    assert.deepEqual(listed.images.map((image) => [image.name, image.running]), [["dev", false]]);
+    assert.equal(
+      textOf(callTool(cwd, "image_list")),
+      `1 image, none running. The default image is dev.\nimages:\n  dev state=stopped template="Pharo 14.0 - 64bit (stable)" mcp=${defaultPharoMcpVersion}`,
+    );
+
+    assert.equal(
+      textOf(callTool(cwd, "image_create", { name: "p13", template: "Pharo 13.0 - 64bit" })),
+      "Created image p13 from Pharo 13.0 - 64bit. It is not running yet; image_start starts it.",
+    );
+  });
+});
+
+test("a create under a server started with an image says where a call naming none still goes", () => {
+  inProject((cwd) => {
+    const answer = serve({
+      cwd,
+      args: ["--image", "ci"],
+      request: { method: "tools/call", params: { name: "image_create", arguments: { name: "dev", template: "Pharo 13.0 - 64bit" } } },
+    });
+    assert.equal(
+      textOf(answer),
+      "Created image dev from Pharo 13.0 - 64bit. It is not running yet; image_start starts it."
+        + " It is the project's default image; a call that names no image still goes to ci.",
+    );
   });
 });
 
@@ -831,11 +955,27 @@ test("a start through the server says the tool list changed", () => {
     const { served, result, messages } = callTool(cwd, "image_start", {});
 
     assert.equal(served.status, 0, served.stderr);
-    assert.equal(answerOf(result).name, "dev");
+    assert.equal(
+      textOf({ served, result }).split("\n")[0],
+      "Started image dev as it was last saved.",
+      "a call that names no image already goes there",
+    );
     assert.ok(messages.some((message) => message.method === "notifications/tools/list_changed"));
     assert.notEqual(readWorld().images["proj-dev"].running, undefined);
-    assert.equal(answerOf(result).note, undefined, "a call that names no image already goes there");
   }, { images: { "proj-dev": pinnedImage() } }, { defaultImage: "dev" });
+});
+
+// The terminal's words name its commands, which a model on the server has
+// not been told of.
+test("a start or a stop that names no image, in a project with no default, says what to do here", () => {
+  inProject((cwd) => {
+    const refused = "No image is named, and this project has no default image. Name one, or create one with"
+      + " image_create; the first image created becomes the default.";
+    assert.equal(refusalOf(callTool(cwd, "image_start", {})), refused);
+    assert.equal(refusalOf(callTool(cwd, "image_stop", {})), refused);
+    assert.deepEqual(callsOf("start"), []);
+    assert.deepEqual(callsOf("stop"), []);
+  }, { images: { "proj-dev": pinnedImage() } });
 });
 
 // An agent that started p13 sent every call without image, to the default
@@ -845,19 +985,56 @@ test("a start of an image other than the default says to name it in its tools' c
     const { served, result } = callTool(cwd, "image_start", { name: "p13" });
 
     assert.equal(served.status, 0, served.stderr);
-    assert.match(answerOf(result).note, /Pass image: "p13" to its tools/);
-    assert.match(answerOf(result).note, /names no image goes to dev, the default image/);
+    assert.equal(
+      textOf({ served, result }).split("\n")[0],
+      'Started image p13 as it was last saved. Pass image: "p13" to its tools: a call that names no image'
+        + " goes to dev, the default image.",
+    );
   }, { images: { "proj-dev": runningImage(41000), "proj-p13": pinnedImage() } }, { defaultImage: "dev" });
 });
 
 test("a stop through the server says the tool list changed", () => {
   inProject((cwd) => {
-    const { served, messages } = callTool(cwd, "image_stop", { name: "p13" });
+    const answer = callTool(cwd, "image_stop", { name: "p13" });
 
-    assert.equal(served.status, 0, served.stderr);
-    assert.ok(messages.some((message) => message.method === "notifications/tools/list_changed"));
+    assert.equal(answer.served.status, 0, answer.served.stderr);
+    assert.equal(textOf(answer), "Stopped image p13; what it had not saved is lost.");
+    assert.ok(answer.messages.some((message) => message.method === "notifications/tools/list_changed"));
     assert.equal(readWorld().images["proj-p13"].running, undefined);
+    assert.equal(textOf(callTool(cwd, "image_stop", { name: "p13" })), "Image p13 was not running.");
   }, { images: { "proj-dev": runningImage(41000), "proj-p13": runningImage(42000) } }, { defaultImage: "dev" });
+});
+
+// A VM this project cannot talk to may be one a person started: all leaves
+// it, and says which it left and how to stop it.
+test("a stop of all says which images it stopped and which it left running", () => {
+  inProject((cwd) => {
+    assert.equal(
+      textOf(callTool(cwd, "image_stop", { all: true })),
+      "Stopped ci and dev; what they had not saved is lost.\n"
+        + "Warning: Left legacy running: not started by this PLexus, so only image_stop with its name stops it.\n"
+        + "Warning: Left spike running: it is still being created.",
+    );
+    assert.deepEqual(callsOf("stop").map((call) => call.name), ["ci", "dev"]);
+    assert.equal(
+      textOf(callTool(cwd, "image_stop", { all: true })),
+      "No image of this project was stopped.\n"
+        + "Warning: Left legacy running: not started by this PLexus, so only image_stop with its name stops it.\n"
+        + "Warning: Left spike running: it is still being created.",
+    );
+  }, {
+    images: {
+      "proj-ci": runningImage(42000),
+      "proj-dev": runningImage(41000),
+      "proj-idle": pinnedImage(),
+      "proj-legacy": pinnedImage({ running: { pids: [123] } }),
+      "proj-spike": pinnedImage({ building: true, running: { pids: [4242] } }),
+    },
+  });
+  inProject((cwd) => {
+    assert.equal(textOf(callTool(cwd, "image_stop", { all: true })), "Stopped image dev; what it had not saved is lost.");
+    assert.equal(textOf(callTool(cwd, "image_stop", { all: true })), "No image of this project was running.");
+  }, { images: { "proj-dev": runningImage(41000), "proj-idle": pinnedImage() } });
 });
 
 test("an image tool goes to the image its argument names, without that argument", () => {
@@ -925,6 +1102,32 @@ test("a forwarded call whose connection closes says what became of the image", (
       }),
     },
   }, { defaultImage: "dev" });
+});
+
+test("a delete of the default image says the next image created becomes the default", () => {
+  inProject((cwd) => {
+    assert.equal(
+      textOf(callTool(cwd, "image_delete", { name: "p13" })),
+      "Deleted image p13 and its files.",
+    );
+    assert.equal(
+      textOf(callTool(cwd, "image_delete", { name: "dev" })),
+      "Deleted image dev and its files. It was the project's default image; the next image created becomes the default.",
+    );
+    assert.equal(readConfig(cwd).defaultImage, undefined);
+  }, { images: { "proj-dev": pinnedImage(), "proj-p13": pinnedImage() } }, { defaultImage: "dev" });
+  inProject((cwd) => {
+    const answer = serve({
+      cwd,
+      args: ["--image", "ci"],
+      request: { method: "tools/call", params: { name: "image_delete", arguments: { name: "dev" } } },
+    });
+    assert.equal(
+      textOf(answer),
+      "Deleted image dev and its files. It was the project's default image; the next image created becomes"
+        + " the default. A call that names no image still goes to ci.",
+    );
+  }, { images: { "proj-dev": pinnedImage() } }, { defaultImage: "dev" });
 });
 
 test("a delete through the server needs the name, never the default", () => {

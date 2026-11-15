@@ -1,5 +1,5 @@
 import { callImageTool } from "./gateway.js";
-import { olderMcpWarning, projectImages } from "./images.js";
+import { projectImages } from "./images.js";
 import { readConfig, resolveImageName } from "./project.js";
 import {
   forgetProjection,
@@ -178,13 +178,14 @@ async function startProjection(target, mountPath, imageName) {
 
 /**
  * Start an image, the default one when none is named, and mount its source
- * where the machine allows it.
+ * where the machine allows it. The image as listed before the start comes
+ * back with it, for the answer: what every start files in, and which MCP it
+ * holds.
  *
  * @param {string} projectRoot
  * @param {string} [name]
  * @param {{ display?: "headless" | "interactive" }} [options]
- * @returns {Promise<Awaited<ReturnType<import("@evref-bl/plexus").Images["start"]>>
- *   & { mountPath?: string, projectionPort?: number, warning?: string }>}
+ * @returns {Promise<import("./answers.js").AgentStart>}
  */
 export async function startAgentImage(projectRoot, name, options = {}) {
   const images = projectImages(projectRoot);
@@ -194,7 +195,6 @@ export async function startAgentImage(projectRoot, name, options = {}) {
   // PLexus starts only an image no VM runs, so a projection recorded under
   // this name belonged to a VM that is gone.
   forgetProjection(projectRoot, resolved);
-  const olderMcp = olderMcpWarning(row);
   const availability = projectionAvailability();
   const mountPath = resolveMountPath(projectRoot, readConfig(projectRoot), resolved);
   let projection;
@@ -217,11 +217,7 @@ export async function startAgentImage(projectRoot, name, options = {}) {
   if ("reason" in projection) {
     // The image and its tools are the point; the projection is the extra this
     // package bundles where the machine allows it.
-    return {
-      ...started,
-      warning: [projectionUnavailableWarning(resolved, projection.reason), olderMcp]
-        .filter(Boolean).join("\n"),
-    };
+    return { ...started, row, mountWarning: projectionUnavailableWarning(resolved, projection.reason) };
   }
   recordProjection(projectRoot, resolved, {
     mountPath,
@@ -229,49 +225,28 @@ export async function startAgentImage(projectRoot, name, options = {}) {
     pifsRelease,
     pids: started.pids,
   });
-  return {
-    ...started,
-    mountPath,
-    projectionPort: projection.port,
-    ...(olderMcp ? { warning: olderMcp } : {}),
-  };
-}
-
-/**
- * Said where an agent takes up an image, by a start from the terminal or
- * from the server: a call that names no image does not follow the image
- * just started.
- *
- * @param {string} name the image started
- * @param {string} [defaultImage] where a call naming none goes
- */
-export function callsNote(name, defaultImage) {
-  if (name === defaultImage) return undefined;
-  return defaultImage === undefined
-    ? `Pass image: "${name}" to its tools.`
-    : `Pass image: "${name}" to its tools: a call that names no image goes to ${defaultImage}, the default image.`;
+  return { ...started, row, mountPath, projectionPort: projection.port };
 }
 
 /**
  * Stop one image, the default one when none is named, or with `all`, every
  * image of this project that a PLexus start left answering. A VM started by
  * hand, or by an older PLexus, has no endpoint, and only a stop that names
- * its image reaches it.
+ * its image reaches it: `all` leaves it running, and says which it left.
  *
  * @param {string} projectRoot
  * @param {string} [name]
  * @param {{ all?: boolean }} [options]
+ * @returns {Promise<import("./answers.js").AgentStop>}
  */
 export async function stopAgentImage(projectRoot, name, options = {}) {
   if (options.all && name !== undefined) {
     throw new Error("Stopping every image takes no image name.");
   }
   const images = projectImages(projectRoot);
-  const rows = options.all
-    ? (await images.list()).filter((row) => row.endpoint)
-    : await images.list(resolveImageName(projectRoot, name));
+  const listed = options.all ? await images.list() : await images.list(resolveImageName(projectRoot, name));
+  const rows = options.all ? listed.filter((row) => row.endpoint) : listed;
   const stopped = [];
-  const warnings = [];
   for (const row of rows) {
     const projection = liveProjection(projectRoot, row);
     if (projection && row.endpoint) {
@@ -281,12 +256,13 @@ export async function stopAgentImage(projectRoot, name, options = {}) {
         });
       } catch (error) {
         // The stop goes on: the projection's daemon unmounts once its image
-        // is gone, so a failed unmount leaves nothing behind for long.
-        warnings.push(`PIFS did not unmount ${row.name}: ${error.message}`);
+        // is gone, so a failed unmount leaves nothing behind for long, and
+        // nothing for the answer to say. The host's log keeps it.
+        console.error(`pharo-agent: PIFS did not unmount ${row.name}: ${error.message}`);
       }
     }
     stopped.push(await images.stop(row.name));
     forgetProjection(projectRoot, row.name);
   }
-  return { stopped, ...(warnings.length > 0 ? { warning: warnings.join("\n") } : {}) };
+  return { stopped, left: options.all ? listed.filter((row) => row.running && !row.endpoint) : [] };
 }

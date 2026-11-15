@@ -10,13 +10,21 @@ import {
   imageTarget,
   listImageTools,
   missingDefault,
-  toolResult,
   version,
   withImageSelector,
 } from "./gateway.js";
-import { callFailedText } from "./answers.js";
+import {
+  callFailedText,
+  createAnswer,
+  deleteAnswer,
+  listAnswer,
+  noDefaultImage,
+  startAnswer,
+  stopAnswer,
+  templatesAnswer,
+} from "./answers.js";
 import { createImage, deleteImage, listImageTemplates, listImages, projectImages } from "./images.js";
-import { callsNote, startAgentImage, stopAgentImage } from "./live.js";
+import { startAgentImage, stopAgentImage } from "./live.js";
 import { readConfig } from "./project.js";
 
 // The host loads only tool names and these instructions at session start and
@@ -306,38 +314,8 @@ export async function serveImagesMcp(resolveProjectRoot, selectedImage) {
     // Matched before the image's catalogue: these names belong to this
     // server, and an image that happened to hold one must not decide what
     // starting an image means.
-    if (tool === "image_templates") {
-      return toolResult({ ok: true, ...(await listImageTemplates(projectRoot)) });
-    }
-    if (tool === "image_create") {
-      const { name, template, category } = /** @type {{ name: string, template: string, category?: string }} */ (argumentsValue);
-      return toolResult({
-        ok: true,
-        ...(await createImage(projectRoot, name, { template, ...(category === undefined ? {} : { category }) })),
-      });
-    }
-    if (tool === "image_list") {
-      return toolResult({ ok: true, ...(await listImages(projectRoot, serverDefaultImage(projectRoot, selectedImage))) });
-    }
-    if (tool === "image_start") {
-      const { name, display } = /** @type {{ name?: string, display?: "headless" | "interactive" }} */ (argumentsValue);
-      const started = await startAgentImage(projectRoot, name ?? selectedImage, display ? { display } : {});
-      await server.sendToolListChanged();
-      const note = callsNote(started.name, serverDefaultImage(projectRoot, selectedImage));
-      return toolResult({ ok: true, ...started, ...(note ? { note } : {}) });
-    }
-    if (tool === "image_stop") {
-      // A name given with all reaches stopAgentImage, which refuses the pair,
-      // rather than be dropped for the reading that stops the most.
-      const { name, all } = /** @type {{ name?: string, all?: boolean }} */ (argumentsValue);
-      const stopped = all
-        ? await stopAgentImage(projectRoot, name, { all: true })
-        : await stopAgentImage(projectRoot, name ?? selectedImage);
-      await server.sendToolListChanged();
-      return toolResult({ ok: true, ...stopped });
-    }
-    if (tool === "image_delete") {
-      return toolResult({ ok: true, ...(await deleteImage(projectRoot, /** @type {string} */ (argumentsValue.name))) });
+    if (projectTool) {
+      return textResult(imageToolAnswers.render(await projectToolAnswer(projectRoot, tool, argumentsValue)));
     }
 
     // Listed tools are the common ones, not the whole catalogue, and the image
@@ -351,11 +329,61 @@ export async function serveImagesMcp(resolveProjectRoot, selectedImage) {
       { defaultImage: selectedImage },
     );
     try {
-      return toolResult(await callImageTool(target, tool, imageArguments));
+      // The image's answer, an error or not, is the image's to word.
+      return await callImageTool(target, tool, imageArguments);
     } catch (error) {
       const failed = await callFailedText(target, tool, error);
       if (failed === undefined) throw error;
       return textResult(failed, true);
+    }
+  }
+
+  /**
+   * What one of this server's own tools did, its arguments already checked
+   * against its schema.
+   *
+   * @param {string} projectRoot
+   * @param {string} tool
+   * @param {Record<string, any>} args
+   */
+  async function projectToolAnswer(projectRoot, tool, args) {
+    const defaultImage = serverDefaultImage(projectRoot, selectedImage);
+    // A start or a stop that names no image, with no default, is told what
+    // to do in this server's terms: the terminal's text names commands.
+    const named = (/** @type {string | undefined} */ name) => {
+      const resolved = name ?? defaultImage;
+      if (resolved === undefined) throw new Error(noDefaultImage());
+      return resolved;
+    };
+    switch (tool) {
+      case "image_templates":
+        return templatesAnswer(await listImageTemplates(projectRoot));
+      case "image_create":
+        return createAnswer(
+          await createImage(projectRoot, args.name, {
+            template: args.template,
+            ...(args.category === undefined ? {} : { category: args.category }),
+          }),
+          selectedImage,
+        );
+      case "image_list":
+        return listAnswer(projectRoot, await listImages(projectRoot, defaultImage), selectedImage !== undefined);
+      case "image_start": {
+        const start = await startAgentImage(projectRoot, named(args.name), args.display ? { display: args.display } : {});
+        await server.sendToolListChanged();
+        return startAnswer(projectRoot, start, defaultImage);
+      }
+      case "image_stop": {
+        // A name given with all reaches stopAgentImage, which refuses the
+        // pair, rather than be dropped for the reading that stops the most.
+        const stopped = args.all
+          ? await stopAgentImage(projectRoot, args.name, { all: true })
+          : await stopAgentImage(projectRoot, named(args.name));
+        await server.sendToolListChanged();
+        return stopAnswer(stopped, args.all === true);
+      }
+      default:
+        return deleteAnswer(await deleteImage(projectRoot, args.name), selectedImage);
     }
   }
 

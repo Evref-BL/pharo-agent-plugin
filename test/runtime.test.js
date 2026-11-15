@@ -3,7 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { toolResult, withImageSelector } from "../src/gateway.js";
+import { withImageSelector } from "../src/gateway.js";
 import {
   projectionAvailability,
   projectionStartOutcome,
@@ -157,15 +157,6 @@ test("a record holds only while a VM it was made with runs the image", () => {
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }
-});
-
-test("an image tool result that is already an MCP result is passed through", () => {
-  const imageResult = { content: [{ type: "text", text: "42" }], isError: false };
-  assert.equal(toolResult(imageResult), imageResult);
-
-  const plain = toolResult({ resultPrintString: "42" });
-  assert.equal(plain.content[0].type, "text");
-  assert.match(plain.content[0].text, /resultPrintString/);
 });
 
 test("reads the evaluation result out of an MCP text content part", () => {

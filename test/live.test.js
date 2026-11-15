@@ -3,12 +3,14 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
+import { startAnswer, stopAnswer } from "../src/answers.js";
 import { callImageTool, imageTarget } from "../src/gateway.js";
 import { pifsRelease, startAgentImage, stopAgentImage } from "../src/live.js";
 import { writeConfig } from "../src/project.js";
 import { projectionPath, readProjection, recordProjection } from "../src/runtime.js";
 import {
   callsOf,
+  defaultPharoMcpVersion,
   pinnedImage,
   readWorld,
   runningImage,
@@ -20,6 +22,25 @@ import {
 const mounts = { skip: !["darwin", "linux"].includes(process.platform) && "PIFS mounts on macOS and Linux only" };
 
 const projectionPort = { tool: "image_evaluate", contains: "startMountedAt:", result: { content: [{ type: "text", text: "60341" }] } };
+
+/**
+ * What `run` writes on stderr through console.error, which reaches a host's
+ * log and not the answer.
+ *
+ * @param {() => Promise<void>} run
+ */
+async function logged(run) {
+  const error = console.error;
+  /** @type {string[]} */
+  const lines = [];
+  console.error = (text) => { lines.push(String(text)); };
+  try {
+    await run();
+  } finally {
+    console.error = error;
+  }
+  return lines;
+}
 
 /**
  * A project, a fake PLexus store and a projection setting, all put back
@@ -54,7 +75,7 @@ test("a start mounts the image's source and records the projection", mounts, asy
     assert.equal(started.name, "dev");
     assert.equal(started.mountPath, mountPath);
     assert.equal(started.projectionPort, 60341);
-    assert.equal(started.warning, undefined);
+    assert.equal(started.mountWarning, undefined);
     assert.deepEqual(readProjection(root, "dev"), { mountPath, projectionPort: 60341, pifsRelease, pids: started.pids });
     const [evaluation] = callsOf("callTool");
     assert.equal(evaluation.tool, "image_evaluate");
@@ -77,8 +98,8 @@ test("PHARO_AGENT_PROJECTION=off starts the image without asking PIFS", async ()
     const started = await startAgentImage(root, "dev");
 
     assert.equal(started.mountPath, undefined);
-    assert.match(started.warning ?? "", /PHARO_AGENT_PROJECTION=off/);
-    assert.match(started.warning ?? "", /Image dev is running with its Pharo tools/);
+    assert.match(started.mountWarning ?? "", /PHARO_AGENT_PROJECTION=off/);
+    assert.match(started.mountWarning ?? "", /Image dev is running with its Pharo tools/);
     assert.deepEqual(callsOf("callTool"), []);
     assert.equal(readProjection(root, "dev"), undefined);
   }, { images: { "proj-dev": pinnedImage() } }, { projection: "off" });
@@ -88,7 +109,7 @@ test("a projection PIFS refuses leaves the image running, with the reason", moun
   await inProject(async (root) => {
     const started = await startAgentImage(root, "dev");
 
-    assert.match(started.warning ?? "", /^FUSE needs fusermount3\./);
+    assert.match(started.mountWarning ?? "", /^FUSE needs fusermount3\./);
     assert.equal(readWorld().images["proj-dev"].running !== undefined, true);
     assert.equal(readProjection(root, "dev"), undefined);
   }, {
@@ -134,7 +155,11 @@ test("a start forgets the projection a gone VM left recorded", async () => {
 test("a start of an image made with another pin says so", async () => {
   await inProject(async (root) => {
     const started = await startAgentImage(root, "dev");
-    assert.match(started.warning ?? "", /Image dev holds Pharo MCP 0\.0\.1/);
+    assert.deepEqual(started.row.mcp, { source: "pin", version: "0.0.1" }, "the image as listed before its start");
+    assert.ok(startAnswer(root, started, "dev").warnings.includes(
+      `Image dev holds Pharo MCP 0.0.1, and images are created with ${defaultPharoMcpVersion} now, so its tools`
+        + " may differ from the current ones. Recreating it gives it the current MCP.",
+    ));
   }, { images: { "proj-dev": pinnedImage({ mcp: { source: "pin", version: "0.0.1" } }) } }, { projection: "off" });
 });
 
@@ -146,7 +171,7 @@ test("a stop unmounts the projection, then kills the image", async () => {
     recordProjection(root, "dev", mountedDev);
     const stopped = await stopAgentImage(root, "dev");
 
-    assert.deepEqual(stopped, { stopped: [{ name: "dev", killed: [91000] }] });
+    assert.deepEqual(stopped, { stopped: [{ name: "dev", killed: [91000] }], left: [] });
     const order = readWorld().calls.filter((call) => call.op === "callTool" || call.op === "stop");
     assert.deepEqual(order.map((call) => call.op), ["callTool", "stop"]);
     assert.match(order[0].arguments.code, /stopOn: 60341/);
@@ -157,7 +182,7 @@ test("a stop unmounts the projection, then kills the image", async () => {
 test("an image that exited is stopped without asking it to unmount", async () => {
   await inProject(async (root) => {
     recordProjection(root, "dev", mountedDev);
-    assert.deepEqual(await stopAgentImage(root, undefined), { stopped: [{ name: "dev", killed: [] }] });
+    assert.deepEqual(await stopAgentImage(root, undefined), { stopped: [{ name: "dev", killed: [] }], left: [] });
     assert.deepEqual(callsOf("callTool"), []);
     assert.equal(readProjection(root, "dev"), undefined);
   }, { images: { "proj-dev": pinnedImage() } }, { config: { defaultImage: "dev" } });
@@ -168,7 +193,7 @@ test("an image that exited is stopped without asking it to unmount", async () =>
 test("a projection recorded for another VM of the image is not unmounted", async () => {
   await inProject(async (root) => {
     recordProjection(root, "dev", { ...mountedDev, pids: [5] });
-    assert.deepEqual(await stopAgentImage(root, "dev"), { stopped: [{ name: "dev", killed: [91000] }] });
+    assert.deepEqual(await stopAgentImage(root, "dev"), { stopped: [{ name: "dev", killed: [91000] }], left: [] });
     assert.deepEqual(callsOf("callTool"), []);
   }, { images: { "proj-dev": runningImage(41000) } });
 });
@@ -179,18 +204,23 @@ test("a projection record that does not read is no record", async () => {
   await inProject(async (root) => {
     recordProjection(root, "dev", mountedDev);
     fs.writeFileSync(projectionPath(root, "dev"), '{"mountPath":');
-    assert.deepEqual(await stopAgentImage(root, "dev"), { stopped: [{ name: "dev", killed: [91000] }] });
+    assert.deepEqual(await stopAgentImage(root, "dev"), { stopped: [{ name: "dev", killed: [91000] }], left: [] });
     assert.deepEqual(callsOf("callTool"), []);
   }, { images: { "proj-dev": runningImage(41000) } });
 });
 
-test("an unmount that fails still stops the image, and says so", async () => {
+// The daemon unmounts once its image is gone, so the answer would hold
+// nothing to act on; the host's log keeps it.
+test("an unmount that fails still stops the image, and says so on stderr only", async () => {
   await inProject(async (root) => {
     recordProjection(root, "dev", mountedDev);
-    const stopped = await stopAgentImage(root, "dev");
+    /** @type {import("../src/answers.js").AgentStop | undefined} */
+    let stopped;
+    const stderr = await logged(async () => { stopped = await stopAgentImage(root, "dev"); });
 
-    assert.deepEqual(stopped.stopped, [{ name: "dev", killed: [91000] }]);
-    assert.match(stopped.warning ?? "", /PIFS did not unmount dev: socket hang up/);
+    assert.deepEqual(stopped, { stopped: [{ name: "dev", killed: [91000] }], left: [] });
+    assert.deepEqual(stderr, ["pharo-agent: PIFS did not unmount dev: socket hang up"]);
+    assert.deepEqual(stopAnswer(/** @type {any} */ (stopped)).warnings, []);
   }, {
     images: {
       "proj-dev": runningImage(41000, { answers: [{ tool: "image_evaluate", contains: "stopOn:", error: "socket hang up" }] }),
@@ -205,6 +235,7 @@ test("stopping all stops the project's images that have an endpoint", async () =
     const stopped = await stopAgentImage(root, undefined, { all: true });
 
     assert.deepEqual(stopped.stopped.map((each) => each.name), ["dev"]);
+    assert.deepEqual(stopped.left.map((each) => each.name), ["legacy"], "what all leaves running, to say so");
     assert.deepEqual(callsOf("stop").map((call) => call.name), ["dev"]);
     assert.notEqual(readWorld().images["proj-legacy"].running, undefined);
     assert.notEqual(readWorld().images["other-dev"].running, undefined);

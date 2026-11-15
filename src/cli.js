@@ -1,4 +1,11 @@
-import { callFailedText } from "./answers.js";
+import {
+  callFailedText,
+  callsNote,
+  startAnswer,
+  startJson,
+  stopAnswer,
+  stopJson,
+} from "./answers.js";
 import { hostChoices, hostList } from "./hosts.js";
 import { usage } from "./help.js";
 import { initialize } from "./init.js";
@@ -11,7 +18,7 @@ import {
 } from "./images.js";
 import { callImageTool, imageTarget, listImageTools, toolContract } from "./gateway.js";
 import { serveImagesMcp } from "./mcpServer.js";
-import { callsNote, startAgentImage, stopAgentImage } from "./live.js";
+import { startAgentImage, stopAgentImage } from "./live.js";
 import { findProjectRoot, readConfig } from "./project.js";
 import {
   isToolName,
@@ -217,14 +224,16 @@ async function runImageCommand(projectRoot, subcommand, args) {
   }
   if (subcommand === "start") {
     const { name, options } = parseImageStart(args);
-    const started = await startAgentImage(projectRoot, name, options);
-    const { defaultImage } = readConfig(projectRoot);
-    const note = callsNote(started.name, typeof defaultImage === "string" ? defaultImage : undefined);
-    return { ...started, ...(note ? { note } : {}) };
+    const start = await startAgentImage(projectRoot, name, options);
+    const configured = readConfig(projectRoot).defaultImage;
+    const defaultImage = typeof configured === "string" ? configured : undefined;
+    const note = callsNote(start.name, defaultImage);
+    return { ...startJson(start, startAnswer(projectRoot, start, defaultImage)), ...(note ? { note } : {}) };
   }
   if (subcommand === "stop") {
     const { name, all } = parseImageStop(args);
-    return stopAgentImage(projectRoot, name, { all });
+    const stopped = await stopAgentImage(projectRoot, name, { all });
+    return stopJson(stopped, stopAnswer(stopped, all));
   }
   if (subcommand === "use" || subcommand === "delete") {
     const [name, ...extra] = args;
