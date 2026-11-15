@@ -171,6 +171,24 @@ test("a PHARO_AGENT_PROJECTION other than off starts the image unmounted, and sa
   }, { images: { "proj-dev": pinnedImage() } }, { projection: "0" });
 });
 
+// PIFS has no daemon there, so no mount was to be had, and nothing is
+// warned of: an answer without a mount line says there is none.
+test("a start on a platform PIFS has no daemon for asks nothing of PIFS, and says nothing of it", async () => {
+  const platform = /** @type {PropertyDescriptor} */ (Object.getOwnPropertyDescriptor(process, "platform"));
+  Object.defineProperty(process, "platform", { ...platform, value: "win32" });
+  try {
+    await inProject(async (root) => {
+      const started = await startAgentImage(root, "dev");
+
+      assert.equal(started.notMounted, undefined);
+      assert.equal(imageToolAnswers.render(startAnswer(root, started, "dev")), "Started image dev as it was last saved.");
+      assert.deepEqual(callsOf("callTool"), []);
+    }, { images: { "proj-dev": pinnedImage() } });
+  } finally {
+    Object.defineProperty(process, "platform", platform);
+  }
+});
+
 test("a projection PIFS refuses leaves the image running, with the reason", mounts, async () => {
   await inProject(async (root) => {
     const started = await startAgentImage(root, "dev");
