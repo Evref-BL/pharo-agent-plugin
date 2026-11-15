@@ -121,6 +121,17 @@ test("the projection start gives its evaluation a limit only where the image lis
   });
 });
 
+// An MCP from before the rename lists image_evaluate; a newer one, evaluate.
+test("the projection start evaluates through the tool the image lists", mounts, async () => {
+  const evaluate = { name: "evaluate", inputSchema: { type: "object", properties: { code: { type: "string" } } } };
+  await inProject(async (root) => {
+    await startAgentImage(root, "dev");
+
+    const [evaluation] = callsOf("callTool");
+    assert.equal(evaluation.tool, "evaluate");
+  }, { images: { "proj-dev": pinnedImage({ tools: [evaluate], answers: [{ ...projectionPort, tool: "evaluate" }] }) } });
+});
+
 // The listing is the image's first answer: one that fails is a mount that
 // fails, and the evaluation is not sent to an image that did not answer it.
 test("a projection start whose image does not list its tools stops the image", mounts, async () => {

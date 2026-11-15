@@ -174,15 +174,27 @@ export function resultPrintString(result) {
  * @param {string} mountPath
  * @param {string} imageName
  */
+/**
+ * The tool an image runs Smalltalk with, as it lists it: `evaluate`, or
+ * `image_evaluate` in an image whose MCP predates the rename. An image that
+ * lists neither has an MCP older still, which held `image_evaluate` without
+ * listing it.
+ *
+ * @param {{ name: string, inputSchema?: any }[]} tools
+ */
+export function evaluationTool(tools) {
+  return tools.find((tool) => tool.name === "evaluate") ?? tools.find((tool) => tool.name === "image_evaluate");
+}
+
 async function startProjection(target, mountPath, imageName) {
   // Only an image whose MCP lists the limit is given one: an older MCP
   // refuses an argument it does not know. The listing is the image's answer
   // too, so one that fails fails the mount.
-  const evaluate = (await listImageTools(target)).find((tool) => tool.name === "image_evaluate");
+  const evaluate = evaluationTool(await listImageTools(target));
   const limited = evaluate?.inputSchema?.properties?.timeoutSeconds !== undefined;
   const result = await callImageTool(
     target,
-    "image_evaluate",
+    evaluate?.name ?? "image_evaluate",
     { code: pifsStartCode(mountPath, imageName), ...(limited ? { timeoutSeconds: pifsStartSeconds } : {}) },
     limited && evaluate ? { inputSchema: evaluate.inputSchema } : {},
   );
@@ -286,7 +298,8 @@ export async function stopAgentImage(projectRoot, name, options = {}) {
     const projection = liveProjection(projectRoot, row);
     if (projection && row.endpoint) {
       try {
-        await callImageTool({ name: row.name, images, endpoint: row.endpoint }, "image_evaluate", {
+        const target = { name: row.name, images, endpoint: row.endpoint };
+        await callImageTool(target, evaluationTool(await listImageTools(target))?.name ?? "image_evaluate", {
           code: pifsStopCode(projection.projectionPort),
         });
       } catch (error) {
