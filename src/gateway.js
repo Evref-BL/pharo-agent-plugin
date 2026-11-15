@@ -105,12 +105,33 @@ async function namedTarget(images, name) {
   return { name, images, endpoint: await images.endpoint(name) };
 }
 
+// Raises the least a forwarded call waits, for a host or a machine slower
+// than the image's own limits allow for.
+const callSecondsVariable = "PHARO_AGENT_CALL_SECONDS";
+
+/** PLexus's minute: a forwarded call never waits less than it did before the variable. */
+const leastCallSeconds = 60;
+
+let callSecondsRefused = false;
+
 /**
  * The least a forwarded call waits for its answer, and what the handshake
- * before it waits: PLexus's minute.
+ * before it waits: PLexus's minute, or the whole number of seconds
+ * PHARO_AGENT_CALL_SECONDS gives when that is more. Any other value is
+ * ignored, and said once per process on stderr, which reaches a host's log.
+ *
+ * @param {Record<string, string | undefined>} [env]
  */
-export function callMinimumMs() {
-  return 60_000;
+export function callMinimumMs(env = process.env) {
+  const setting = env[callSecondsVariable];
+  if (!setting) return leastCallSeconds * 1000;
+  if (/^\d+$/.test(setting)) return Math.max(Number(setting), leastCallSeconds) * 1000;
+  if (!callSecondsRefused) {
+    callSecondsRefused = true;
+    console.error(`pharo-agent: ${callSecondsVariable} takes a whole number of seconds, not ${JSON.stringify(setting)};`
+      + ` waiting at least ${leastCallSeconds} s.`);
+  }
+  return leastCallSeconds * 1000;
 }
 
 /**

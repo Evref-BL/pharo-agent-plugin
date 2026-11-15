@@ -1085,6 +1085,19 @@ test("an image tool goes to the image its argument names, without that argument"
   }, { defaultImage: "dev" });
 });
 
+test("PHARO_AGENT_CALL_SECONDS reaches PLexus as the least a forwarded call waits", () => {
+  inProject((cwd) => {
+    const { served } = serve({
+      cwd,
+      env: { PHARO_AGENT_CALL_SECONDS: "300" },
+      request: { method: "tools/call", params: { name: "class_get", arguments: { name: "Point" } } },
+    });
+
+    assert.equal(served.status, 0, served.stderr);
+    assert.deepEqual(callsOf("callTool").map((call) => call.options), [{ minimumMs: 300_000, signal: true }]);
+  }, { images: { "proj-dev": runningImage(41000) } }, { defaultImage: "dev" });
+});
+
 // The rest of a forwarded call is the image's to check, against its own
 // schema; which image it goes to is this server's.
 test("a forwarded call naming its image by anything but a string is refused, and nothing is called", () => {

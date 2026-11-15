@@ -3,7 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { withImageSelector } from "../src/gateway.js";
+import { callMinimumMs, withImageSelector } from "../src/gateway.js";
 import { noSourceMounted } from "../src/answers.js";
 import {
   projectionAvailability,
@@ -23,6 +23,32 @@ import {
   recordProjection,
   smalltalkString,
 } from "../src/runtime.js";
+
+// A forwarded call never waits less than PLexus's minute, which it waited
+// before the variable.
+test("PHARO_AGENT_CALL_SECONDS raises the least a call waits, and never lowers it", () => {
+  assert.equal(callMinimumMs({}), 60_000);
+  assert.equal(callMinimumMs({ PHARO_AGENT_CALL_SECONDS: "" }), 60_000);
+  assert.equal(callMinimumMs({ PHARO_AGENT_CALL_SECONDS: "300" }), 300_000);
+  assert.equal(callMinimumMs({ PHARO_AGENT_CALL_SECONDS: "30" }), 60_000);
+  assert.equal(callMinimumMs({ PHARO_AGENT_CALL_SECONDS: "0" }), 60_000);
+});
+
+test("a PHARO_AGENT_CALL_SECONDS that is not a whole number is ignored, and said once", () => {
+  const error = console.error;
+  /** @type {string[]} */
+  const said = [];
+  console.error = (text) => { said.push(String(text)); };
+  try {
+    assert.equal(callMinimumMs({ PHARO_AGENT_CALL_SECONDS: "2m" }), 60_000);
+    assert.equal(callMinimumMs({ PHARO_AGENT_CALL_SECONDS: "90.5" }), 60_000);
+  } finally {
+    console.error = error;
+  }
+  assert.deepEqual(said, [
+    'pharo-agent: PHARO_AGENT_CALL_SECONDS takes a whole number of seconds, not "2m"; waiting at least 60 s.',
+  ]);
+});
 
 test("escapes project-controlled values for PIFS evaluation", () => {
   assert.equal(smalltalkString("O'Reilly"), "'O''Reilly'");
