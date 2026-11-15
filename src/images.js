@@ -1,24 +1,10 @@
-import { Images, defaultPharoMcpVersion } from "@evref-bl/plexus";
+import { Images, imageToolAnswers } from "@evref-bl/plexus";
 import { projectScope, readConfig, writeConfig } from "./project.js";
 import { forgetProjection, liveProjection } from "./runtime.js";
 
 /** PLexus's images, seen through this project's scope. */
 export function projectImages(projectRoot) {
   return new Images({ scope: projectScope(projectRoot) });
-}
-
-/**
- * An image made from the pinned MCP keeps the MCP it was made with, so once
- * the pin moves its tools can differ from the ones the current guidance
- * describes. Only a pin can be compared: a script's MCP is its author's.
- *
- * @param {{ name: string, mcp?: { source: "pin", version: string } | { source: "script", script: string } }} row
- */
-export function olderMcpWarning(row) {
-  if (row.mcp?.source !== "pin" || row.mcp.version === defaultPharoMcpVersion) return undefined;
-  return `Image ${row.name} holds Pharo MCP ${row.mcp.version}, and images are created with`
-    + ` ${defaultPharoMcpVersion} now, so its tools may differ from the current ones.`
-    + " Recreating it gives it the current MCP.";
 }
 
 export async function listImageTemplates(projectRoot) {
@@ -36,7 +22,9 @@ export async function listImages(projectRoot, defaultImage = readConfig(projectR
     ...(typeof defaultImage === "string" ? { defaultImage } : {}),
     images: rows.map((row) => {
       const projection = liveProjection(projectRoot, row);
-      const warning = olderMcpWarning(row);
+      // An image keeps the MCP it was made with: PLexus says when that is
+      // not the one images are made with now.
+      const warning = imageToolAnswers.olderMcp(row);
       return {
         ...row,
         isDefault: row.name === defaultImage,
