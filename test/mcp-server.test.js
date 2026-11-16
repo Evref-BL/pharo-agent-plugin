@@ -1012,6 +1012,17 @@ test("a start under a server started with an image names that image as where a c
   }, { defaultImage: "dev" });
 });
 
+// Deleting the default clears it, and a start then names its image: a call
+// that names none is refused, so there is no image for the note to name.
+test("a start in a project with no default image says to name it, and names no default", () => {
+  inProject((cwd) => {
+    const { served, result } = callTool(cwd, "image_start", { name: "p13" });
+
+    assert.equal(served.status, 0, served.stderr);
+    assert.equal(textOf({ served, result }), 'Started image p13 as it was last saved. Pass image: "p13" to its tools.');
+  }, { images: { "proj-p13": pinnedImage() } });
+});
+
 // 477 characters of JSON said the pids, the endpoint and the seconds; an
 // agent acts on where the source is.
 // The mount root is the project's to choose, so the answer gives the path

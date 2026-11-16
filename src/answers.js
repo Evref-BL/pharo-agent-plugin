@@ -46,7 +46,8 @@ export function pathFrom(projectRoot, target) {
  * Said where an agent takes up an image, by a start from the terminal or
  * from the server: a call that names no image does not follow the image
  * just started, and goes to the default, which the note names. Without it,
- * agents that started p13 wrote into the default image unawares.
+ * agents that started p13 wrote into the default image unawares. With no
+ * default, such a call is refused, and the note only says to name the image.
  *
  * @param {string} name the image started
  * @param {string} [defaultImage] where a call naming none goes
