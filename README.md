@@ -66,9 +66,10 @@ npx --yes @evref-bl/pharo-agent init --host <claude|codex|opencode>
 **The launcher.** `image templates` names every template the installation
 offers. `image create <name> --template <template>` makes an image with the
 image tools in it, `image start <name>` starts it, `image stop <name>` kills
-it, and `image delete <name>` deletes it. A project can have as many images as
-it likes — one per Pharo version, one per subject, one to throw away — and run
-them at once; `image list` says which exist and which are running.
+it (`--save` has it save itself and quit instead), and `image delete <name>`
+deletes it. A project can have as many images as it likes — one per Pharo
+version, one per subject, one to throw away — and run them at once;
+`image list` says which exist and which are running.
 [Images](docs/images.md) has the rest.
 
 **The tools of each running image.** Classes, methods, senders, tests and

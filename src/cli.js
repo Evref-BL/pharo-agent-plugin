@@ -124,11 +124,12 @@ function parseImageStart(args) {
 
 function parseImageStop(args) {
   const all = args.includes("--all");
-  const [name, ...extra] = args.filter((value) => value !== "--all");
+  const save = args.includes("--save");
+  const [name, ...extra] = args.filter((value) => value !== "--all" && value !== "--save");
   if (extra.length > 0 || (name && name.startsWith("--"))) {
-    throw new Error("image stop takes one image name or --all");
+    throw new Error("image stop takes one image name or --all, and --save");
   }
-  return { name, all };
+  return { name, options: { ...(all ? { all } : {}), ...(save ? { save } : {}) } };
 }
 
 function takeImageOption(args) {
@@ -265,9 +266,9 @@ async function runImageCommand(projectRoot, subcommand, args) {
     return answered(answer, { ...startJson(start, answer), ...(note ? { note } : {}) });
   }
   if (subcommand === "stop") {
-    const { name, all } = parseImageStop(args);
-    const stopped = await stopAgentImage(projectRoot, name, { all });
-    const answer = stopAnswer(stopped, all);
+    const { name, options } = parseImageStop(args);
+    const stopped = await stopAgentImage(projectRoot, name, options);
+    const answer = stopAnswer(stopped, options.all === true);
     return answered(answer, stopJson(stopped, answer));
   }
   if (subcommand === "use" || subcommand === "delete") {
