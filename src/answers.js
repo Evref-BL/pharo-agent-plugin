@@ -23,8 +23,9 @@ const { texts } = imageToolAnswers;
  */
 /**
  * What a stop through this package did: PLexus's stops, the running images a
- * stop of all of them left, which take no calls, and PLexus's refusal of each
- * image a stop of all that saves left running, unsaved.
+ * stop of all of them left, which take no calls, and, for each image a stop
+ * of all that saves did not save, PLexus's answer, which says whether it
+ * still runs or quit without writing its image file.
  *
  * @typedef {{
  *   stopped: import("@evref-bl/plexus").StopResult[],
@@ -168,7 +169,8 @@ const saveHint = "image_stop with save: true saves an image before stopping it."
 
 /**
  * One image stopped, as PLexus says it, or every running image of the
- * project that takes calls, with a warning for each one left running.
+ * project that takes calls, with a warning for each one left running or
+ * not saved.
  *
  * @param {AgentStop} result
  * @param {boolean} [all]
@@ -179,7 +181,7 @@ export function stopAnswer(result, all = false) {
   const warnings = [...notSaved, ...left.map(leftRunning)];
   if (!all || stopped.length === 1) return { ...imageToolAnswers.stopped(stopped[0]), warnings };
   if (stopped.length === 0) {
-    // Not "was running": the warnings say which images still run.
+    // Not "was running": the warnings say what became of each image.
     const summary = notSaved.length === 0 ? "No image of this project was stopped." : "No image of this project was saved.";
     return { summary, warnings, fields: [] };
   }

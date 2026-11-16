@@ -42,7 +42,7 @@ const commands = {
     usage: "image stop [<name>] [--all] [--save] [--json]",
     description: "Kill an image without saving it, and unmount its source: the default one without a\n"
       + "name, or --all of this project's running images. --save has the image save itself and\n"
-      + "quit instead; one that does not in time is left running.",
+      + "quit instead; one that does not take the save, or does not quit in time, is left running.",
     example: "image stop dev",
   },
   "image delete": {

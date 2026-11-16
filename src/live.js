@@ -282,9 +282,10 @@ export async function startAgentImage(projectRoot, name, options = {}) {
  * its image reaches it: `all` leaves it running, and says which it left.
  *
  * With `save`, PLexus has each image save itself and quit, and its source is
- * not unmounted first: its daemon unmounts once the image has exited. An
- * image that does not save is left running, mount and all, as PLexus leaves
- * it; `all` goes on to the others, and says which did not save.
+ * not unmounted first: its daemon unmounts once the image has exited, and
+ * the record goes once PLexus says it has, saved or not. An image that still
+ * runs keeps its source. `all` goes on past an image that did not save, and
+ * gives PLexus's answer for it, which says whether it still runs.
  *
  * @param {string} projectRoot
  * @param {string} [name]
@@ -306,9 +307,12 @@ export async function stopAgentImage(projectRoot, name, options = {}) {
       try {
         stopped.push(await images.stop(row.name, { save: true }));
       } catch (error) {
-        // PLexus did not save this one, and says why and whether it still
-        // runs: the others are still the stop of all's to save.
-        if (!options.all || error?.code !== "save-failed") throw error;
+        // PLexus did not save this one: save-failed when it still runs,
+        // stopped-unsaved when its VM quit without writing its file. The
+        // others are still the stop of all's to save.
+        const exited = error?.code === "stopped-unsaved";
+        if (exited) forgetProjection(projectRoot, row.name);
+        if (!options.all || !(exited || error?.code === "save-failed")) throw error;
         notSaved.push(error.message);
         continue;
       }

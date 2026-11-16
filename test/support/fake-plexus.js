@@ -44,7 +44,9 @@ const scopePattern = /^[A-Za-z0-9][A-Za-z0-9._]{0,63}$/;
  * rejects as cancelled, as PLexus's does, recording `callCancelled`.
  *
  * A stop asked to save an image that `saveFails` refuses with that text, as
- * PLexus refuses a save the image did not make, and leaves it running.
+ * PLexus refuses a save the image did not make, and leaves it running. One
+ * asked to save an image that `quitsUnsaved` leaves it with no VM, and
+ * refuses as PLexus refuses an image that quit without writing its file.
  *
  * @typedef {{
  *   template?: string,
@@ -57,6 +59,7 @@ const scopePattern = /^[A-Za-z0-9][A-Za-z0-9._]{0,63}$/;
  *   startFails?: string,
  *   stopFails?: string,
  *   saveFails?: string,
+ *   quitsUnsaved?: boolean,
  *   unreachable?: boolean,
  *   hangs?: boolean,
  *   busy?: boolean,
@@ -353,6 +356,7 @@ export class Images {
     if (saved && image.saveFails) throw new PlexusError("save-failed", image.saveFails, { pids });
     delete image.running;
     writeWorld(world);
+    if (saved && image.quitsUnsaved) throw new PlexusError("stopped-unsaved", texts.stoppedUnsaved(name));
     return saved ? { name, killed: [], saved: /** @type {const} */ (true) } : { name, killed: pids };
   }
 

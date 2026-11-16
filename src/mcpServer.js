@@ -422,9 +422,10 @@ export async function serveImagesMcp(resolveProjectRoot, selectedImage) {
         try {
           stopped = await stopAgentImage(projectRoot, name, options);
         } catch (error) {
-          // A save that fails may still have ended the image: its VM can
-          // quit without writing its file.
-          if (args.save === true) await server.sendToolListChanged();
+          // An image whose VM quit without writing its file has gone all
+          // the same. A save that failed leaves its image running, and a
+          // refusal touches no image: the host has nothing to list again.
+          if (error?.code === "stopped-unsaved") await server.sendToolListChanged();
           throw error;
         }
         await server.sendToolListChanged();

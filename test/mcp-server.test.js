@@ -8,7 +8,7 @@ import { fileURLToPath } from "node:url";
 import { listingTimeoutMs } from "../src/mcpServer.js";
 import { pifsRelease } from "../src/live.js";
 import { readConfig, writeConfig } from "../src/project.js";
-import { recordProjection } from "../src/runtime.js";
+import { readProjection, recordProjection } from "../src/runtime.js";
 import {
   callsOf,
   changeImages,
@@ -1165,16 +1165,15 @@ test("a stop with save has the image save itself and quit, and says so", () => {
   }, { images: { "proj-dev": runningImage(41000), "proj-p13": runningImage(42000) } }, { defaultImage: "dev" });
 });
 
-// PLexus leaves an image that did not save running, and says what to do.
-// Its VM may also have quit without writing its file, so the host is told
-// to list again either way.
+// PLexus leaves an image that did not save running, and says what to do:
+// the image's tools are still there, so the host is not told to list again.
 test("a save that fails is PLexus's refusal, and the image runs on with its source mounted", () => {
   inProject((cwd) => {
     recordProjection(cwd, "p13", { mountPath: "/m/p13", projectionPort: 60341, pifsRelease, pids: [92000] });
     const answer = callTool(cwd, "image_stop", { name: "p13", save: true });
 
     assert.equal(refusalOf(answer), imageToolAnswers.texts.notSaved("p13", "it refused the connection"));
-    assert.ok(answer.messages.some((message) => message.method === "notifications/tools/list_changed"));
+    assert.equal(answer.messages.some(listChanged), false);
     assert.notEqual(readWorld().images["proj-p13"].running, undefined);
     assert.deepEqual(callsOf("callTool"), [], "nothing asked the image to unmount");
     assert.match(textOf(callTool(cwd, "image_list", {})), /^ {2}p13 state=running .* mount=\/m\/p13$/m);
@@ -1183,6 +1182,35 @@ test("a save that fails is PLexus's refusal, and the image runs on with its sour
       "proj-p13": runningImage(42000, { saveFails: imageToolAnswers.texts.notSaved("p13", "it refused the connection") }),
     },
   });
+});
+
+// Its VM gone, the image's tools have gone with it, as after a stop.
+test("an image that quits without writing its file is PLexus's refusal, and has gone with its source", () => {
+  inProject((cwd) => {
+    recordProjection(cwd, "p13", { mountPath: "/m/p13", projectionPort: 60341, pifsRelease, pids: [92000] });
+    const answer = callTool(cwd, "image_stop", { name: "p13", save: true });
+
+    assert.equal(refusalOf(answer), imageToolAnswers.texts.stoppedUnsaved("p13"));
+    assert.ok(answer.messages.some(listChanged));
+    assert.equal(readWorld().images["proj-p13"].running, undefined);
+    assert.deepEqual(callsOf("callTool"), [], "nothing asked the image to unmount");
+    assert.equal(readProjection(cwd, "p13"), undefined, "its daemon unmounts it, as after a save");
+  }, { images: { "proj-p13": runningImage(42000, { quitsUnsaved: true }) } });
+});
+
+// A refusal before any image was stopped changed nothing a host lists.
+test("a stop with save that touches no image does not say the tool list changed", () => {
+  inProject((cwd) => {
+    for (const [args, refusal] of [
+      [{ all: true, name: "dev", save: true }, "Stopping every image takes no image name."],
+      [{ name: "nosuch", save: true }, imageToolAnswers.texts.noSuchImage("nosuch")],
+    ]) {
+      const answer = callTool(cwd, "image_stop", args);
+      assert.equal(refusalOf(answer), refusal);
+      assert.equal(answer.messages.some(listChanged), false, JSON.stringify(args));
+    }
+    assert.deepEqual(callsOf("stop"), []);
+  }, { images: { "proj-dev": runningImage(41000) } });
 });
 
 test("a stop of all with save saves each image, and names one that did not save", () => {
@@ -1202,6 +1230,15 @@ test("a stop of all with save saves each image, and names one that did not save"
       `No image of this project was saved.\nWarning: ${refused}`,
     );
   }, { images: { "proj-ci": runningImage(42000, { saveFails: refused }), "proj-dev": runningImage(41000) } });
+  inProject((cwd) => {
+    const answer = callTool(cwd, "image_stop", { all: true, save: true });
+    assert.equal(
+      textOf(answer),
+      `Saved and stopped image dev.\nWarning: ${imageToolAnswers.texts.stoppedUnsaved("ci")}`,
+    );
+    assert.ok(answer.messages.some(listChanged));
+    assert.deepEqual(callsOf("stop").map((call) => call.name), ["ci", "dev"]);
+  }, { images: { "proj-ci": runningImage(42000, { quitsUnsaved: true }), "proj-dev": runningImage(41000) } });
 });
 
 test("an image tool goes to the image its argument names, without that argument", () => {

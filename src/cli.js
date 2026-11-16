@@ -127,7 +127,7 @@ function parseImageStop(args) {
   const save = args.includes("--save");
   const [name, ...extra] = args.filter((value) => value !== "--all" && value !== "--save");
   if (extra.length > 0 || (name && name.startsWith("--"))) {
-    throw new Error("image stop takes one image name or --all, and --save");
+    throw new Error("image stop takes one image name or --all, and optionally --save");
   }
   return { name, options: { ...(all ? { all } : {}), ...(save ? { save } : {}) } };
 }

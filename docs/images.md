@@ -63,14 +63,16 @@ opens the image's window.
 `image stop <name>` kills the image's VM. It does not save: whatever the image
 has not saved is lost, and the image starts again as it was last saved.
 `image stop <name> --save` has the image save itself and quit instead, and
-answers once its VM is gone and its image file was written; an image that
-does not save and quit in time is left running, and the answer says so.
-Evaluating `Smalltalk saveSession` in the image saves it without stopping it.
-Stopping an image that is not running is not an error. `image stop --all`
-stops every running image of the project that PLexus started and can reach;
-a VM started by hand, or by an older PLexus, stops only when its image is
-named. With `--save`, each of them saves itself, and one that does not is
-left running and named in the answer.
+answers once its VM is gone and its image file was written. An image that
+does not take the save, or does not quit in time, is left running; one whose
+VM quits without writing its image file has stopped, and what it had not
+saved is lost. The answer says which. Evaluating `Smalltalk saveSession` in
+the image saves it without stopping it. Stopping an image that is not
+running is not an error. `image stop --all` stops every running image of the
+project that PLexus started and can reach; a VM started by hand, or by an
+older PLexus, stops only when its image is named. With `--save`, each of them
+saves itself, and the answer names each one that does not, and says whether
+it still runs.
 
 Without a name, `image start` and `image stop` act on the default image. A
 tool command, `list` and `mcp` take `--image <name>`, which scopes a call
@@ -85,9 +87,9 @@ An image can exit without being stopped: it crashes, or its window is closed.
 `image list` then shows it as not running, and the `mcp` server lists its own
 tools without the image's. `image start` starts it again. Its source
 projection unmounts on its own a few seconds after the image exits: the
-daemon serving it watches the image. An image that `image stop --save` stops
-is left to unmount the same way, so that one whose save fails keeps its
-source.
+daemon serving it watches the image. An image that `image stop --save` stops,
+saved or not, is left to unmount the same way, so that one whose save fails
+and still runs keeps its source.
 
 ## Where the source projection works
 

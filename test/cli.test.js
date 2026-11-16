@@ -72,11 +72,11 @@ test("image start takes one name and a display", async () => {
   });
 });
 
-test("image stop takes one name or --all, and --save", async () => {
+test("image stop takes one name or --all, and optionally --save", async () => {
   await inProject(async () => {
-    await assert.rejects(() => main(["image", "stop", "dev", "ci"]), /^Error: image stop takes one image name or --all, and --save$/);
-    await assert.rejects(() => main(["image", "stop", "dev", "--save", "ci"]), /image stop takes one image name or --all, and --save/);
-    await assert.rejects(() => main(["image", "stop", "dev", "--save=yes"]), /image stop takes one image name or --all, and --save/);
+    await assert.rejects(() => main(["image", "stop", "dev", "ci"]), /^Error: image stop takes one image name or --all, and optionally --save$/);
+    await assert.rejects(() => main(["image", "stop", "dev", "--save", "ci"]), /image stop takes one image name or --all, and optionally --save/);
+    await assert.rejects(() => main(["image", "stop", "dev", "--save=yes"]), /image stop takes one image name or --all, and optionally --save/);
     await assert.rejects(() => main(["image", "stop", "dev", "--all"]), /takes no image name/);
     await assert.rejects(() => main(["image", "stop", "--save", "dev", "--all"]), /takes no image name/);
     assert.deepEqual(callsOf("stop"), []);
@@ -282,7 +282,7 @@ test("help is answered wherever the word lands without initializing a project", 
       [["image", "list", "--help"], /which are running now/],
       [["image", "list", "--help"], /pharo-agent image list \[--json\][^]*--json prints the answer as JSON, for a script\./],
       [["image", "--help"], /pharo-agent image stop \[<name>\] \[--all\] \[--save\] \[--json\]/],
-      [["image", "stop", "--help"], /--save has the image save itself and\nquit instead; one that does not in time is left running\./],
+      [["image", "stop", "--help"], /--save has the image save itself and\nquit instead; one that does not take the save, or does not quit in time, is left running\./],
       [["image", "templates", "--help"], /templates images can be created from/],
       [["image", "use", "--help"], /Make an image the default/],
       [["image", "delete", "--help"], /Delete a stopped image/],
