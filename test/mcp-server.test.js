@@ -980,17 +980,36 @@ test("a start or a stop that names no image, in a project with no default, says 
 });
 
 // An agent that started p13 sent every call without image, to the default
-// image, and wrote its work there.
-test("a start of an image other than the default says to name it in its tools' calls", () => {
+// image, and wrote its work there. Told only to pass image, two agents of
+// three did the same again: the note names where such a call goes.
+test("a start of an image other than the default says to name it, and where a call naming none goes", () => {
   inProject((cwd) => {
     const { served, result } = callTool(cwd, "image_start", { name: "p13" });
 
     assert.equal(served.status, 0, served.stderr);
     assert.equal(
       textOf({ served, result }),
-      'Started image p13 as it was last saved. Pass image: "p13" to its tools.',
+      'Started image p13 as it was last saved. Pass image: "p13" to its tools: a call that names no image'
+        + " goes to dev, the default image.",
     );
   }, { images: { "proj-dev": runningImage(41000), "proj-p13": pinnedImage() } }, { defaultImage: "dev" });
+});
+
+test("a start under a server started with an image names that image as where a call naming none goes", () => {
+  inProject((cwd) => {
+    const answer = serve({
+      cwd,
+      args: ["--image", "ci"],
+      request: { method: "tools/call", params: { name: "image_start", arguments: { name: "p13" } } },
+    });
+    assert.equal(
+      textOf(answer),
+      'Started image p13 as it was last saved. Pass image: "p13" to its tools: a call that names no image'
+        + " goes to ci, the default image.",
+    );
+  }, {
+    images: { "proj-dev": runningImage(41000), "proj-ci": runningImage(41001), "proj-p13": pinnedImage() },
+  }, { defaultImage: "dev" });
 });
 
 // 477 characters of JSON said the pids, the endpoint and the seconds; an

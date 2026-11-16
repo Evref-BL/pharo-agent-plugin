@@ -45,13 +45,17 @@ export function pathFrom(projectRoot, target) {
 /**
  * Said where an agent takes up an image, by a start from the terminal or
  * from the server: a call that names no image does not follow the image
- * just started.
+ * just started, and goes to the default, which the note names. Without it,
+ * agents that started p13 wrote into the default image unawares.
  *
  * @param {string} name the image started
  * @param {string} [defaultImage] where a call naming none goes
  */
 export function callsNote(name, defaultImage) {
-  return name === defaultImage ? undefined : `Pass image: "${name}" to its tools.`;
+  if (name === defaultImage) return undefined;
+  return defaultImage === undefined
+    ? `Pass image: "${name}" to its tools.`
+    : `Pass image: "${name}" to its tools: a call that names no image goes to ${defaultImage}, the default image.`;
 }
 
 /**
