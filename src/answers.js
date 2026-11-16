@@ -71,36 +71,32 @@ export function callsNote(name, defaultImage) {
 export function defaultAnsweredNote(target) {
   const others = target.alsoRunning ?? [];
   if (others.length === 0) return undefined;
-  const naming = others.length === 1 ? `${others[0]} runs too: name it` : `${texts.andList(others)} run too: name one`;
-  return `No image was named, so the call went to ${target.name}, the default image. ${naming} with image to call it.`;
+  const passes = others.map((name) => `image: "${name}"`);
+  const naming = others.length === 1
+    ? `${others[0]} runs too: pass ${passes[0]} to call it.`
+    : `${texts.andList(others)} run too: pass ${orList(passes)} to call one.`;
+  return `No image was named, so the call went to ${target.name}, the default image. ${naming}`;
+}
+
+/** "a", "a or b", "a, b, or c". */
+function orList(items) {
+  return items.length <= 2 ? items.join(" or ") : `${items.slice(0, -1).join(", ")}, or ${items.at(-1)}`;
 }
 
 /**
- * An image's answer with a note of this package's after it: on a line of
- * its own at the end of its last text, so that a host showing one text part
- * shows both, or as a text of its own when the image answered none.
+ * An image's answer with a note of this package's after it, as a text of its
+ * own: the image's texts stay as it wrote them, a method's source say, which
+ * an agent may copy into a file. An answer sent as structured content alone
+ * is left as it is: a host that shows structured content only where no text
+ * comes with it, as `resultText` does, would show the note in its place.
  *
- * @param {{ content?: unknown[] }} result
+ * @param {{ content?: unknown[], structuredContent?: unknown }} result
  * @param {string} note
  */
 export function noted(result, note) {
   const content = Array.isArray(result.content) ? result.content : [];
-  const last = content.map(isText).lastIndexOf(true);
-  if (last === -1) return { ...result, content: [...content, { type: "text", text: note }] };
-  return {
-    ...result,
-    content: content.map((part, index) => (index === last && isText(part) ? { ...part, text: `${part.text}\n${note}` } : part)),
-  };
-}
-
-/**
- * @param {unknown} part
- * @returns {part is { type: "text", text: string }}
- */
-function isText(part) {
-  return typeof part === "object" && part !== null
-    && /** @type {{ type?: unknown }} */ (part).type === "text"
-    && typeof (/** @type {{ text?: unknown }} */ (part).text) === "string";
+  if (content.length === 0 && result.structuredContent !== undefined) return result;
+  return { ...result, content: [...content, { type: "text", text: note }] };
 }
 
 /**

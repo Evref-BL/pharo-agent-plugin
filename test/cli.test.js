@@ -377,7 +377,7 @@ test("a tool call that names no image says on stderr which image answered while 
     assert.deepEqual(JSON.parse(unnamed.stdout), { content: [{ type: "text", text: "'Pharo14.0.0SNAPSHOT'" }] });
     assert.equal(
       unnamed.stderr,
-      "No image was named, so the call went to dev, the default image. p13 runs too: name it with image to call it.\n",
+      'No image was named, so the call went to dev, the default image. p13 runs too: pass image: "p13" to call it.\n',
     );
 
     const named = run(["evaluate", "--image", "dev"], root);
