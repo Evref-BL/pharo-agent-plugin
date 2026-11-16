@@ -44,7 +44,9 @@ from standard input, so code needs no quoting. Every tool the image holds is
 called the same way, whether or not `list` names it.
 
 The answer is the text the tool wrote. `--json` prints the MCP result instead,
-for a script; a tool that fails exits nonzero either way.
+for a script; a tool that fails exits nonzero either way. While another image
+of the project runs, a call that names no image also says on standard error
+that the default image answered, and which others run.
 
 ## As an MCP server
 
@@ -67,10 +69,12 @@ taking longer, is asked again at the next listing.
 
 A call that names no image goes to the default image, so `image` is required
 on a tool the default does not list: it lacks the tool, is not running, or
-does not exist. A call naming no image is refused, with the running images
-named, while the default is not running, and while it does not exist the
-refusal says how to create or choose one. `--image <name>` makes another image
-the default for this server, in all of this and in `image_list`.
+does not exist. While another image of the project runs, the answer to such a
+call ends by saying the default image answered, and which others run. A call
+naming no image is refused, with the running images named, while the default
+is not running, and while it does not exist the refusal says how to create or
+choose one. `--image <name>` makes another image the default for this server,
+in all of this and in `image_list`.
 
 `image_start` and `image_stop` tell the host the list changed. An image that
 another session starts, or that exits, tells it nothing, so a host's list is

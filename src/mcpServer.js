@@ -16,9 +16,11 @@ import {
 import {
   callFailedText,
   createAnswer,
+  defaultAnsweredNote,
   deleteAnswer,
   listAnswer,
   noDefaultImage,
+  noted,
   startAnswer,
   stopAnswer,
   templatesAnswer,
@@ -362,8 +364,11 @@ export async function serveImagesMcp(resolveProjectRoot, selectedImage) {
     );
     const inputSchema = listedSchemas.get(target.name)?.get(tool);
     try {
-      // The image's answer, an error or not, is the image's to word.
-      return await callImageTool(target, tool, imageArguments, { ...(inputSchema ? { inputSchema } : {}), signal });
+      // The image's answer, an error or not, is the image's to word; which
+      // image that was is this server's to add, where the call named none.
+      const result = await callImageTool(target, tool, imageArguments, { ...(inputSchema ? { inputSchema } : {}), signal });
+      const note = image === undefined ? defaultAnsweredNote(target) : undefined;
+      return note === undefined ? result : noted(result, note);
     } catch (error) {
       const failed = await callFailedText(target, tool, error);
       if (failed === undefined) throw error;

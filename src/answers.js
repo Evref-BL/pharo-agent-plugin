@@ -60,6 +60,50 @@ export function callsNote(name, defaultImage) {
 }
 
 /**
+ * Said with the answer to a call that named no image, while other images of
+ * the project take calls: which image answered, as the start note says where
+ * such a call goes. An agent that had started p13 read the default image's
+ * answer as p13's, since nothing in it said otherwise. With no other image
+ * taking calls, there is nothing to mistake it for, and nothing is said.
+ *
+ * @param {import("./gateway.js").Target} target where the call went
+ */
+export function defaultAnsweredNote(target) {
+  const others = target.alsoRunning ?? [];
+  if (others.length === 0) return undefined;
+  const naming = others.length === 1 ? `${others[0]} runs too: name it` : `${texts.andList(others)} run too: name one`;
+  return `No image was named, so the call went to ${target.name}, the default image. ${naming} with image to call it.`;
+}
+
+/**
+ * An image's answer with a note of this package's after it: on a line of
+ * its own at the end of its last text, so that a host showing one text part
+ * shows both, or as a text of its own when the image answered none.
+ *
+ * @param {{ content?: unknown[] }} result
+ * @param {string} note
+ */
+export function noted(result, note) {
+  const content = Array.isArray(result.content) ? result.content : [];
+  const last = content.map(isText).lastIndexOf(true);
+  if (last === -1) return { ...result, content: [...content, { type: "text", text: note }] };
+  return {
+    ...result,
+    content: content.map((part, index) => (index === last && isText(part) ? { ...part, text: `${part.text}\n${note}` } : part)),
+  };
+}
+
+/**
+ * @param {unknown} part
+ * @returns {part is { type: "text", text: string }}
+ */
+function isText(part) {
+  return typeof part === "object" && part !== null
+    && /** @type {{ type?: unknown }} */ (part).type === "text"
+    && typeof (/** @type {{ text?: unknown }} */ (part).text) === "string";
+}
+
+/**
  * What `pharo-agent image use` did. It has no MCP tool: setting the default
  * is the terminal's.
  *

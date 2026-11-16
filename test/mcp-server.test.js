@@ -760,14 +760,97 @@ test("image_templates names each template under its category", () => {
   });
 });
 
-test("a call that names no image goes to the default image while others run", () => {
+// An agent that had started p13 wrote into the default image with calls that
+// named none, and read its answer, "'Pharo14.0.0SNAPSHOT'", as p13's.
+test("a call that names no image goes to the default image while others run, and its answer says so", () => {
   inProject((cwd) => {
-    const { served, result } = callTool(cwd, "class_get", { name: "Point" });
-
-    assert.equal(served.status, 0, served.stderr);
-    assert.deepEqual(result.content, [{ type: "text", text: "nil" }]);
+    assert.equal(
+      textOf(callTool(cwd, "evaluate", { code: "EvalProbe new version" })),
+      "'Pharo14.0.0SNAPSHOT'\nNo image was named, so the call went to dev, the default image."
+        + " p13 runs too: name it with image to call it.",
+    );
     assert.deepEqual(callsOf("callTool").map((call) => call.url), ["http://127.0.0.1:41000/"]);
-  }, { images: { "proj-dev": runningImage(41000), "proj-p13": runningImage(42000) } }, { defaultImage: "dev" });
+    assert.equal(textOf(callTool(cwd, "evaluate", { image: "dev", code: "EvalProbe new version" })), "'Pharo14.0.0SNAPSHOT'");
+    assert.equal(textOf(callTool(cwd, "evaluate", { image: "p13", code: "EvalProbe new version" })), "nil");
+  }, {
+    images: {
+      "proj-dev": runningImage(41000, {
+        answers: [{ tool: "evaluate", result: { content: [{ type: "text", text: "'Pharo14.0.0SNAPSHOT'" }] } }],
+      }),
+      "proj-p13": runningImage(42000),
+    },
+  }, { defaultImage: "dev" });
+});
+
+// The image's refusal is its answer too, and as easily read as another's.
+test("a refusal by the default image to a call that names none says which image refused", () => {
+  inProject((cwd) => {
+    assert.equal(
+      refusalOf(callTool(cwd, "method_compile", { class: "EvalProbe", source: "version ^ 1" })),
+      "Class EvalProbe does not exist.\nNo image was named, so the call went to dev, the default image."
+        + " ci and p13 run too: name one with image to call it.",
+    );
+  }, {
+    images: {
+      "proj-dev": runningImage(41000, {
+        answers: [{ tool: "method_compile", result: { content: [{ type: "text", text: "Class EvalProbe does not exist." }], isError: true } }],
+      }),
+      "proj-ci": runningImage(42000),
+      "proj-p13": runningImage(43000),
+      "proj-idle": pinnedImage(),
+    },
+  }, { defaultImage: "dev" });
+});
+
+test("which image answered ends the image's last text, or is a text of its own where it answered none", () => {
+  inProject((cwd) => {
+    const note = "No image was named, so the call went to dev, the default image. p13 runs too: name it with image to call it.";
+    assert.deepEqual(callTool(cwd, "method_get", { class: "Point", selector: "x" }).result.content, [
+      { type: "text", text: "Got method Point>>x." },
+      { type: "image", data: "AA==", mimeType: "image/png" },
+      { type: "text", text: `source: x ^ x\n${note}` },
+    ]);
+    assert.deepEqual(callTool(cwd, "screenshot", {}).result.content, [
+      { type: "image", data: "AA==", mimeType: "image/png" },
+      { type: "text", text: note },
+    ]);
+  }, {
+    images: {
+      "proj-dev": runningImage(41000, {
+        answers: [
+          { tool: "method_get", result: { content: [
+            { type: "text", text: "Got method Point>>x." },
+            { type: "image", data: "AA==", mimeType: "image/png" },
+            { type: "text", text: "source: x ^ x" },
+          ] } },
+          { tool: "screenshot", result: { content: [{ type: "image", data: "AA==", mimeType: "image/png" }] } },
+        ],
+      }),
+      "proj-p13": runningImage(42000),
+    },
+  }, { defaultImage: "dev" });
+});
+
+test("a call that names no image, with no other image running, is the image's answer alone", () => {
+  inProject((cwd) => {
+    assert.equal(textOf(callTool(cwd, "class_get", { name: "Point" })), "nil");
+  }, { images: { "proj-dev": runningImage(41000), "proj-p13": pinnedImage() } }, { defaultImage: "dev" });
+});
+
+test("with --image, a call that names no image says it went to that image while others run", () => {
+  inProject((cwd) => {
+    const answer = serve({
+      cwd,
+      args: ["--image", "ci"],
+      request: { method: "tools/call", params: { name: "class_get", arguments: { name: "Point" } } },
+    });
+
+    assert.equal(
+      textOf(answer),
+      "nil\nNo image was named, so the call went to ci, the default image. dev runs too: name it with image to call it.",
+    );
+    assert.deepEqual(callsOf("callTool").map((call) => call.url), ["http://127.0.0.1:42000/"]);
+  }, { images: { "proj-ci": runningImage(42000), "proj-dev": runningImage(41000) } }, { defaultImage: "dev" });
 });
 
 test("a call that names no image, while the default is stopped, names the running ones", () => {
