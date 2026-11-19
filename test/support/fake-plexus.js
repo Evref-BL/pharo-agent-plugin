@@ -6,6 +6,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { context, propagation } from "@opentelemetry/api";
 import { defaultPharoMcpVersion } from "@evref-bl/plexus";
 
 export { defaultPharoMcpVersion };
@@ -418,13 +419,22 @@ async function listing(world, endpoint, timeoutMs) {
 }
 
 /**
+ * The trace context PLexus would pass on in the request's `_meta` is
+ * recorded with the call, when there is one.
+ *
  * @param {{ url: string }} endpoint
  * @param {string} name
  * @param {Record<string, unknown>} [args]
  */
 export async function callTool(endpoint, name, args = {}) {
   const world = readWorld();
-  world.calls.push({ op: "callTool", url: endpoint.url, tool: name, arguments: args });
+  /** @type {Record<string, string>} */
+  const meta = {};
+  propagation.inject(context.active(), meta);
+  world.calls.push({
+    op: "callTool", url: endpoint.url, tool: name, arguments: args,
+    ...(meta.traceparent ? { traceparent: meta.traceparent } : {}),
+  });
   writeWorld(world);
   const [, image] = answering(world, endpoint);
   const answer = (image.answers ?? []).find((each) => each.tool === name

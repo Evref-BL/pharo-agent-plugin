@@ -2,7 +2,9 @@ import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import {
   CallToolRequestSchema,
+  LATEST_PROTOCOL_VERSION,
   ListToolsRequestSchema,
+  SUPPORTED_PROTOCOL_VERSIONS,
 } from "@modelcontextprotocol/sdk/types.js";
 import {
   callImageTool,
@@ -16,6 +18,7 @@ import {
 import { createImage, deleteImage, listImageTemplates, listImages, projectImages } from "./images.js";
 import { callsNote, startAgentImage, stopAgentImage } from "./live.js";
 import { readConfig } from "./project.js";
+import { serveToolCall } from "./telemetry.js";
 
 // The host loads only tool names and these instructions at session start and
 // defers the rest, so this is what decides whether Pharo tools are searched
@@ -252,10 +255,24 @@ function optionalString(argumentsValue, key) {
 }
 
 /**
+ * The protocol version a server answers an initialize request with, as the
+ * SDK's server chooses it: the client's when supported, its latest if not.
+ *
+ * @param {unknown} requested
+ */
+function negotiatedVersion(requested) {
+  return typeof requested === "string" && SUPPORTED_PROTOCOL_VERSIONS.includes(requested)
+    ? requested
+    : LATEST_PROTOCOL_VERSION;
+}
+
+/**
  * @param {() => string} resolveProjectRoot
  * @param {string} [selectedImage] the image a call naming none goes to, instead of the default
+ * @param {import("@modelcontextprotocol/sdk/shared/transport.js").Transport} [transport]
+ *   stdio unless given, for a test
  */
-export async function serveImagesMcp(resolveProjectRoot, selectedImage) {
+export async function serveImagesMcp(resolveProjectRoot, selectedImage, transport) {
   const server = new Server(
     { name: "pharo-agent", version },
     { capabilities: { tools: { listChanged: true } }, instructions: serverInstructions },
@@ -264,7 +281,21 @@ export async function serveImagesMcp(resolveProjectRoot, selectedImage) {
   // A host leaves by closing the server's input. An image still waited on
   // for answering late then has nobody to tell, and is asked nothing more.
   const hostLeft = new AbortController();
-  process.stdin.once("end", () => hostLeft.abort());
+  if (transport === undefined) {
+    process.stdin.once("end", () => hostLeft.abort());
+  }
+  const connection = transport ?? new StdioServerTransport();
+
+  // The SDK's server keeps the version it agreed on to itself, and a span
+  // names it. A handler set before connecting is called first, then the
+  // server's own.
+  /** @type {string | undefined} */
+  let protocolVersion;
+  connection.onmessage = (message) => {
+    if ("method" in message && message.method === "initialize" && "id" in message) {
+      protocolVersion = negotiatedVersion(message.params?.protocolVersion);
+    }
+  };
 
   server.setRequestHandler(ListToolsRequestSchema, async () => {
     let projectRoot;
@@ -285,7 +316,21 @@ export async function serveImagesMcp(resolveProjectRoot, selectedImage) {
     };
   });
 
-  server.setRequestHandler(CallToolRequestSchema, async (request) => {
+  // The trace context a caller passes rides in the request's _meta, which
+  // the SDK hands the handler as it came: its schema lets unknown keys
+  // through.
+  server.setRequestHandler(CallToolRequestSchema, (request) => serveToolCall(
+    {
+      tool: request.params.name,
+      argumentsValue: request.params.arguments,
+      meta: request.params._meta,
+      protocolVersion,
+    },
+    () => callTool(request),
+  ));
+
+  /** @param {import("@modelcontextprotocol/sdk/types.js").CallToolRequest} request */
+  async function callTool(request) {
     const argumentsValue = request.params.arguments ?? {};
     const tool = request.params.name;
     // Throws when there is no project, which is the answer the caller needs.
@@ -348,7 +393,8 @@ export async function serveImagesMcp(resolveProjectRoot, selectedImage) {
       { defaultImage: selectedImage },
     );
     return toolResult(await callImageTool(target, tool, imageArguments));
-  });
+  }
 
-  await server.connect(new StdioServerTransport());
+  await server.connect(connection);
+  return server;
 }

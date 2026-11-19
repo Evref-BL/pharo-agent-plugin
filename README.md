@@ -109,6 +109,38 @@ instructions out of them. Refreshing a project upgrades neither the installed
 plugin nor the code inside a running image; [Images](docs/images.md) covers
 the image side.
 
+## Tracing
+
+The plugin speaks standard OpenTelemetry, and sends nothing unless its
+settings name a trace exporter. The settings are the standard `OTEL_*`
+environment variables: traces go out over OTLP when an endpoint is set
+(`OTEL_EXPORTER_OTLP_ENDPOINT` or `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT`),
+unless `OTEL_SDK_DISABLED=true` or `OTEL_TRACES_EXPORTER` names another
+exporter. OTLP over HTTP is spoken, `http/protobuf` or `http/json`; gRPC is
+not, and a gRPC setting sends nothing. Without settings, no OpenTelemetry SDK
+is even loaded.
+
+Agent hosts do not pass `OTEL_*` variables on to the processes they start, so
+a variable set in your shell may never reach the plugin. When its environment
+holds no `OTEL_*` variable at all, the plugin reads them from a file,
+`$XDG_CONFIG_HOME/pharo-agent/otel.env` (`~/.config/pharo-agent/otel.env` by
+default, `%APPDATA%\pharo-agent\otel.env` on Windows): one `KEY=value` per
+line, `#` for comments, and any key not starting with `OTEL_` ignored. Whoever
+writes the file decides where traces go. Once configured, the plugin passes the
+same settings on to PLexus and the images it starts, and sets
+`PLEXUS_TELEMETRY=1` for them unless it is already set.
+
+Each MCP tool call is a span, and so is each CLI command. A span is parented
+on the trace context its caller passes: the request's `_meta` for an MCP
+call, `TRACEPARENT` in the environment for a command. A span records names,
+never values: the method and tool names, the names of the arguments, and on
+failure the kind of failure, never its message. A tool or argument name is
+recorded only when it looks like an identifier. No argument value, answer,
+path, or image or project name is ever recorded. The resource names this
+package, its version, the OS family, the host the project was set up for, and
+whatever `OTEL_RESOURCE_ATTRIBUTES` adds, but not the machine's name, the
+command line or the executable's path.
+
 ## Reading further
 
 `pharo-agent --help` gives the command overview, and `--help` on a command

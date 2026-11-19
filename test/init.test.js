@@ -101,7 +101,10 @@ test("init adds a conditional Codex block without replacing existing guidance", 
     assert.equal(result.guideName, "AGENTS.md");
     assert.match(fs.readFileSync(agents, "utf8"), /# Existing guidance/);
     assert.match(fs.readFileSync(agents, "utf8"), /When the task uses Pharo, read `pharo\.AGENTS\.md`/);
-    assert.deepEqual(readPluginConfig(root), { scope: scopeFromDirectory(root), mountRoot: ".pharo-agent/mounts" });
+    assert.deepEqual(
+      readPluginConfig(root),
+      { scope: scopeFromDirectory(root), mountRoot: ".pharo-agent/mounts", host: "codex" },
+    );
     assert.ok(fs.existsSync(path.join(root, ".pharo-agent", "skills", "pharo-project-load", "SKILL.md")));
     for (const name of referenceNames()) {
       assert.equal(
@@ -174,12 +177,12 @@ test("init changes the mount root only when explicitly requested", () => {
     const scope = scopeFromDirectory(root);
     initialize({ host: "codex", cwd: root, mountRoot: ".mounts" });
     initialize({ host: "codex", cwd: root });
-    assert.deepEqual(readPluginConfig(root), { scope, mountRoot: ".mounts" });
+    assert.deepEqual(readPluginConfig(root), { scope, mountRoot: ".mounts", host: "codex" });
 
     const configPath = path.join(root, ".pharo-agent", "config.json");
     fs.writeFileSync(configPath, JSON.stringify({ ...readPluginConfig(root), defaultImage: "dev" }));
     initialize({ host: "codex", cwd: root, mountRoot: ".other-mounts" });
-    assert.deepEqual(readPluginConfig(root), { scope, mountRoot: ".other-mounts", defaultImage: "dev" });
+    assert.deepEqual(readPluginConfig(root), { scope, mountRoot: ".other-mounts", host: "codex", defaultImage: "dev" });
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }
@@ -225,7 +228,10 @@ test("init makes the directory a project, with the scope its name gives", () => 
 
     assert.equal(result.projectRoot, root);
     assert.equal(result.createdConfig, true);
-    assert.deepEqual(readPluginConfig(root), { scope: scopeFromDirectory(root), mountRoot: ".pharo-agent/mounts" });
+    assert.deepEqual(
+      readPluginConfig(root),
+      { scope: scopeFromDirectory(root), mountRoot: ".pharo-agent/mounts", host: "claude" },
+    );
     assert.equal(fs.existsSync(path.join(root, "plexus.json")), false);
     assert.ok(fs.existsSync(path.join(root, "CLAUDE.md")));
   } finally {
