@@ -12,13 +12,14 @@ import { callImageTool, imageTarget, listImageTools, toolContract } from "./gate
 import { serveImagesMcp } from "./mcpServer.js";
 import { callsNote, startAgentImage, stopAgentImage } from "./live.js";
 import { findProjectRoot, readConfig } from "./project.js";
-import { recordArgumentNames, runCommand } from "./telemetry.js";
+import { recordArgumentNames, recordUnknownArgumentNames, runCommand } from "./telemetry.js";
 import {
   isToolName,
   resultText,
   toolArguments,
   toolListing,
   toolUsage,
+  undeclaredFlags,
 } from "./toolCommand.js";
 
 function parseInit(args) {
@@ -179,8 +180,14 @@ async function runTool([toolName, ...words]) {
     return 0;
   }
   const target = await imageTarget(findProjectRoot(), image);
-  const argumentsValue = help.rest.length === 0 ? {}
-    : toolArguments(toolName, help.rest, (await toolContract(target, toolName)).inputSchema);
+  let argumentsValue = {};
+  if (help.rest.length > 0) {
+    const { inputSchema } = await toolContract(target, toolName);
+    // Refused here, such a call never reaches the image, whose span would
+    // otherwise say which names the caller expected.
+    recordUnknownArgumentNames(undeclaredFlags(help.rest, inputSchema));
+    argumentsValue = toolArguments(toolName, help.rest, inputSchema);
+  }
   recordArgumentNames(argumentsValue);
   const result = await callImageTool(target, toolName, argumentsValue);
   console.log(json.present ? JSON.stringify(result, null, 2) : resultText(result));

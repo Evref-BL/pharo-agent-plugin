@@ -143,11 +143,22 @@ on the trace context its caller passes: the request's `_meta` for an MCP
 call, `TRACEPARENT` in the environment for a command. A span records names,
 never values: the method and tool names, the names of the arguments, and on
 failure the kind of failure, never its message. A tool or argument name is
-recorded only when it looks like an identifier. No argument value, answer,
-path, or image or project name is ever recorded. The resource names this
-package, its version, the OS family, the host the project was set up for, and
-whatever `OTEL_RESOURCE_ATTRIBUTES` adds, but not the machine's name, the
-command line or the executable's path.
+recorded only when it looks like an identifier. A tool command the CLI refuses
+for flags the tool does not have never reaches the image, so its span records
+those flags' names, as typed, in `pharo_agent.argument.unknown_names`. No
+argument value, answer, path, or image or project name is ever recorded. The
+resource names this package, its version, the OS family, the host the project
+was set up for, and whatever `OTEL_RESOURCE_ATTRIBUTES` adds, but not the
+machine's name, the command line or the executable's path.
+
+Every span also carries a `session.id`, which groups the calls of one working
+session when the host passes no trace context. It is a random value, kept in
+the project's `.pharo-agent/runtime/session` and shared by the plugin's MCP
+server and its commands in that project. A session ends after thirty minutes
+without a call, and the next call starts a new one. Outside a project, each
+command has an id of its own, written nowhere. The file is read and written
+only while traces are sent, and the id says which calls were made together,
+never by whom.
 
 ## Reading further
 

@@ -13,6 +13,8 @@ import { LATEST_PROTOCOL_VERSION } from "@modelcontextprotocol/sdk/types.js";
 import { main } from "../src/cli.js";
 import { serveImagesMcp } from "../src/mcpServer.js";
 import { writeConfig } from "../src/project.js";
+import { sessionFile, sessionIds } from "../src/session.js";
+import { useSessionIds } from "../src/telemetry.js";
 import { installSdk } from "../src/telemetrySdk.js";
 import { callsOf, runningImage, useFakePlexus } from "./support/fake-plexus.js";
 
@@ -247,4 +249,42 @@ test("a CLI command is a span named for it, never for words it does not know", (
   assert.equal(unknown.name, "pharo-agent image");
   assert.equal(unknown.attributes["error.type"], "Error");
   assertNoValues(unknown);
+}));
+
+test("a CLI tool command refused for flags the tool lacks names them, and no value", () => inProject(async (root) => {
+  await assert.rejects(
+    runTraced(root, [
+      "class_get", "--clas", "SecretClass", "--with-source", "--format=secret source", "--bad key", "--clas", "dev", "--name", "proj",
+    ]),
+    /class_get has no argument --clas/,
+  );
+  const [span, ...others] = await finishedSpans();
+  assert.deepEqual(others, []);
+  assert.deepEqual(callsOf("callTool"), []);
+  assert.equal(span.name, "tools/call class_get");
+  assert.deepEqual(span.attributes["pharo_agent.argument.unknown_names"], ["clas", "with-source", "format"]);
+  assert.equal("pharo_agent.argument.names" in span.attributes, false);
+  assert.equal(span.attributes["error.type"], "Error");
+  assert.equal(span.status.code, SpanStatusCode.ERROR);
+  assertNoValues(span);
+}));
+
+test("once sessions are on, the MCP server's and the CLI's spans in a project carry its session.id", () => inProject(async (root) => {
+  useSessionIds(sessionIds({ projectRoot: () => root }));
+  try {
+    const { client, close } = await connected(root);
+    try {
+      await client.callTool({ name: "class_get", arguments: { name: "SecretClass" } });
+    } finally {
+      await close();
+    }
+    const [served] = await finishedSpans();
+    const { spans: [ran] } = await runTraced(root, ["class_get", "SecretClass"]);
+    const id = fs.readFileSync(sessionFile(root), "utf8").trim();
+    assert.match(id, /^[0-9a-f-]{36}$/);
+    assert.equal(served.attributes["session.id"], id);
+    assert.equal(ran.attributes["session.id"], id);
+  } finally {
+    useSessionIds(undefined);
+  }
 }));

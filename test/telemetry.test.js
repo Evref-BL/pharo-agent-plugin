@@ -21,6 +21,8 @@ import {
   startTelemetry,
 } from "../src/telemetry.js";
 import { osType, telemetryResource } from "../src/telemetrySdk.js";
+import { writeConfig } from "../src/project.js";
+import { sessionFile } from "../src/session.js";
 import { plexusHook } from "./support/fake-plexus.js";
 
 const binary = fileURLToPath(new URL("../bin/pharo-agent.js", import.meta.url));
@@ -249,14 +251,15 @@ function hermeticEnv() {
  *
  * @param {string[]} args
  * @param {Record<string, string>} env
+ * @param {string} [cwd]
  */
-function runCli(args, env) {
+function runCli(args, env, cwd = os.tmpdir()) {
   return new Promise((resolve, reject) => {
     // The recorder needs module.registerHooks; without it, it would stop the
     // CLI before it ran, and every comparison below would compare two crashes.
     const recorder = canRecordImports ? ["--import", recordImports] : [];
     const child = spawn(process.execPath, ["--import", plexusHook, ...recorder, binary, ...args], {
-      cwd: os.tmpdir(),
+      cwd,
       // The host running these tests may name its own project.
       env: { ...hermeticEnv(), ...env },
     });
@@ -370,5 +373,50 @@ test("a CLI whose traces have nowhere to go prints the same and exits the same",
     assert.ok(elapsed < 10_000, `took ${elapsed} ms`);
   } finally {
     fs.rmSync(bare, { recursive: true, force: true });
+  }
+});
+
+/** @param {any[]} bodies the OTLP/JSON requests a receiver got */
+function sentSpans(bodies) {
+  return bodies.flatMap((body) => body.resourceSpans)
+    .flatMap((each) => each.scopeSpans.flatMap((scope) => scope.spans));
+}
+
+/** @param {any} span an OTLP/JSON span */
+function sessionIdOf(span) {
+  return span.attributes.find((each) => each.key === "session.id")?.value.stringValue;
+}
+
+test("a project's session is written only once traces are sent, and its processes share it", async () => {
+  const receiver = await traceReceiver();
+  const home = settingsHome(`OTEL_EXPORTER_OTLP_ENDPOINT=${receiver.url}\nOTEL_EXPORTER_OTLP_PROTOCOL=http/json\n`);
+  const bare = temporaryDirectory();
+  const project = temporaryDirectory();
+  const outside = temporaryDirectory();
+  try {
+    writeConfig(project, { scope: "proj" });
+    const plain = /** @type {any} */ (await runCli(["--help"], { XDG_CONFIG_HOME: bare }, project));
+    assert.equal(plain.status, 0, plain.stderr);
+    assert.equal(fs.existsSync(path.join(project, ".pharo-agent", "runtime")), false);
+
+    for (let run = 0; run < 2; run += 1) {
+      const traced = /** @type {any} */ (await runCli(["--help"], { XDG_CONFIG_HOME: home }, project));
+      assert.equal(traced.status, 0, traced.stderr);
+    }
+    const id = fs.readFileSync(sessionFile(project), "utf8").trim();
+    const inProject = sentSpans(receiver.bodies);
+    assert.equal(inProject.length, 2);
+    assert.deepEqual(inProject.map(sessionIdOf), [id, id]);
+
+    receiver.bodies.length = 0;
+    const away = /** @type {any} */ (await runCli(["--help"], { XDG_CONFIG_HOME: home }, outside));
+    assert.equal(away.status, 0, away.stderr);
+    const [span] = sentSpans(receiver.bodies);
+    assert.match(sessionIdOf(span), /^[0-9a-f-]{36}$/);
+    assert.notEqual(sessionIdOf(span), id);
+    assert.deepEqual(fs.readdirSync(outside), []);
+  } finally {
+    await receiver.close();
+    for (const directory of [home, bare, project, outside]) fs.rmSync(directory, { recursive: true, force: true });
   }
 });

@@ -6,8 +6,9 @@
 // name an exporter does it load and register the SDK, from `telemetrySdk.js`.
 //
 // A span carries names, never values: the tool's and the arguments' names,
-// kept only when they look like identifiers, and the kind of a failure. No
-// argument value, result, message, stack, path, image or project name.
+// kept only when they look like identifiers, the kind of a failure, and the
+// random id of the working session. No argument value, result, message,
+// stack, path, image or project name.
 import fs from "node:fs";
 import { createRequire } from "node:module";
 import os from "node:os";
@@ -16,6 +17,7 @@ import { ROOT_CONTEXT, SpanKind, SpanStatusCode, context, propagation, trace } f
 import { hostNamed } from "./hosts.js";
 import { findProjectRoot, readConfig } from "./project.js";
 import { isClosed, reachabilityFile, tracesEndpoint } from "./reachability.js";
+import { sessionIds } from "./session.js";
 
 // Read here rather than from the gateway, which loads PLexus: the entry
 // point starts telemetry before PLexus is loaded, so that PLexus reads the
@@ -148,6 +150,39 @@ function projectAgentHost() {
   }
 }
 
+/** The project a command or a call works in, or undefined outside one. */
+function projectRootOrNone() {
+  try {
+    return findProjectRoot();
+  } catch {
+    return undefined;
+  }
+}
+
+/** @type {(() => string) | undefined} */
+let sessionId;
+
+/**
+ * Where the spans opened from now on take their `session.id`, or nothing to
+ * leave it out. Set once the SDK is registered, so a process that sends no
+ * traces never reads or writes the session file.
+ *
+ * @param {(() => string) | undefined} ids
+ */
+export function useSessionIds(ids) {
+  sessionId = ids;
+}
+
+/** @returns {Record<string, string>} */
+function sessionAttributes() {
+  if (!sessionId) return {};
+  try {
+    return { "session.id": sessionId() };
+  } catch {
+    return {};
+  }
+}
+
 /** @type {{ shutdown: () => Promise<void> } | undefined} */
 let installed;
 let flushBound = exitFlushBoundMs;
@@ -197,6 +232,7 @@ export async function startTelemetry(options = {}) {
       reachability: { file: reachability, endpoint, now },
       ...(host ? { agentHost: host } : {}),
     });
+    useSessionIds(sessionIds({ projectRoot: projectRootOrNone, now }));
     // Once the process has nothing left to do: the end of a command, or a
     // server whose host closed its input. A process killed outright loses
     // what it had not sent, which is better than a process that will not die.
@@ -211,6 +247,7 @@ export async function startTelemetry(options = {}) {
 export async function shutdownTelemetry() {
   const provider = installed;
   installed = undefined;
+  useSessionIds(undefined);
   if (!provider) return;
   /** @type {NodeJS.Timeout | undefined} */
   let timer;
@@ -334,7 +371,8 @@ function fail(span, type) {
 async function inSpan(name, options, parent, run, failure) {
   let span;
   try {
-    span = trace.getTracer("pharo-agent", version).startSpan(name, options, parent);
+    const attributes = { ...options.attributes, ...sessionAttributes() };
+    span = trace.getTracer("pharo-agent", version).startSpan(name, { ...options, attributes }, parent);
   } catch {
     return run();
   }
@@ -421,4 +459,17 @@ export function runCommand(invocation, run, env = process.env) {
 export function recordArgumentNames(argumentsValue) {
   const names = argumentNames(argumentsValue);
   if (names.length > 0) trace.getActiveSpan()?.setAttribute("pharo_agent.argument.names", names);
+}
+
+/**
+ * Adds to the span running a call the names of the flags it was refused
+ * for, which the tool does not declare: the image never sees that call, so
+ * only this span can say what the caller expected. Each name once, and only
+ * when it looks like an identifier.
+ *
+ * @param {string[]} names
+ */
+export function recordUnknownArgumentNames(names) {
+  const kept = [...new Set(names.filter((name) => safeName(name) !== undefined))];
+  if (kept.length > 0) trace.getActiveSpan()?.setAttribute("pharo_agent.argument.unknown_names", kept);
 }
