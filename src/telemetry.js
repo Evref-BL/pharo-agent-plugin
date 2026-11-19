@@ -15,6 +15,7 @@ import path from "node:path";
 import { ROOT_CONTEXT, SpanKind, SpanStatusCode, context, propagation, trace } from "@opentelemetry/api";
 import { hostNamed } from "./hosts.js";
 import { findProjectRoot, readConfig } from "./project.js";
+import { isClosed, reachabilityFile, tracesEndpoint } from "./reachability.js";
 
 // Read here rather than from the gateway, which loads PLexus: the entry
 // point starts telemetry before PLexus is loaded, so that PLexus reads the
@@ -121,6 +122,9 @@ export function isConfigured(env) {
 /** How long one export may take unless the settings say: a tool must not wait on it. */
 export const defaultExportTimeoutMs = 2_000;
 
+/** The longest a process waits for its last spans as it ends. */
+export const exitFlushBoundMs = 1_000;
+
 /**
  * The export timeout the settings give, or undefined when they give none.
  *
@@ -146,18 +150,23 @@ function projectAgentHost() {
 
 /** @type {{ shutdown: () => Promise<void> } | undefined} */
 let installed;
-let flushBound = defaultExportTimeoutMs;
+let flushBound = exitFlushBoundMs;
 
 /**
  * Reads the settings and, when they name an exporter, enrolls the images
  * PLexus handles and registers the SDK. Never throws: telemetry that cannot
  * start leaves the tools as they were.
  *
+ * While the last exports found the collector unreachable, it loads nothing
+ * and sends nothing, until the time to try again.
+ *
  * @param {{
  *   env?: Record<string, string | undefined>,
  *   agentHost?: () => string | undefined,
  *   loadSdk?: () => Promise<typeof import("./telemetrySdk.js")>,
- * }} [options]
+ *   reachability?: string,
+ *   now?: () => number,
+ * }} [options] `reachability` is the file that says which collectors were unreachable
  * @returns {Promise<boolean>} whether the SDK was registered
  */
 export async function startTelemetry(options = {}) {
@@ -165,6 +174,8 @@ export async function startTelemetry(options = {}) {
     env = process.env,
     agentHost = projectAgentHost,
     loadSdk = () => import("./telemetrySdk.js"),
+    reachability = reachabilityFile(env),
+    now = Date.now,
   } = options;
   try {
     applySettingsFile(env);
@@ -172,15 +183,18 @@ export async function startTelemetry(options = {}) {
     // PLexus reads this as the default of its telemetry option: the images
     // it makes and starts send their traces where these do.
     if (env.PLEXUS_TELEMETRY === undefined) env.PLEXUS_TELEMETRY = "1";
+    const endpoint = tracesEndpoint(env);
+    if (!endpoint || isClosed(reachability, endpoint, now())) return false;
     const sdk = await loadSdk();
     const timeout = configuredExportTimeout(env);
-    flushBound = timeout ?? defaultExportTimeoutMs;
+    flushBound = Math.min(timeout ?? exitFlushBoundMs, exitFlushBoundMs);
     const host = agentHost();
     installed = await sdk.installSdk({
       protocol: exportProtocol(env) ?? "http/protobuf",
       timeoutMillis: timeout === undefined ? defaultExportTimeoutMs : undefined,
-      exportTimeoutMillis: flushBound,
+      exportTimeoutMillis: timeout ?? defaultExportTimeoutMs,
       version,
+      reachability: { file: reachability, endpoint, now },
       ...(host ? { agentHost: host } : {}),
     });
     // Once the process has nothing left to do: the end of a command, or a
@@ -193,7 +207,7 @@ export async function startTelemetry(options = {}) {
   }
 }
 
-/** Sends what is left, within the export timeout, and never throws. */
+/** Sends what is left, within a second at most, and never throws. */
 export async function shutdownTelemetry() {
   const provider = installed;
   installed = undefined;

@@ -6,6 +6,7 @@ import { AsyncLocalStorageContextManager } from "@opentelemetry/context-async-ho
 import { CompositePropagator, W3CBaggagePropagator, W3CTraceContextPropagator } from "@opentelemetry/core";
 import { detectResources, envDetector, resourceFromAttributes } from "@opentelemetry/resources";
 import { BatchSpanProcessor, TracerProvider } from "@opentelemetry/sdk-trace";
+import { guardedExporter } from "./reachability.js";
 
 /**
  * The OS family, as the conventions spell `os.type`.
@@ -61,14 +62,18 @@ async function otlpExporter(protocol, timeoutMillis) {
  *   exportTimeoutMillis: number,
  *   version: string,
  *   agentHost?: string,
+ *   reachability?: { file: string, endpoint: string, now?: () => number },
  *   exporter?: import("@opentelemetry/sdk-trace").SpanExporter,
- * }} options `exporter` in place of OTLP's, for a test
+ * }} options `reachability` records how each export went, and stops trying
+ *   an endpoint that failed until it may be tried again; `exporter` in place
+ *   of OTLP's, for a test
  */
-export async function installSdk({ protocol, timeoutMillis, exportTimeoutMillis, version, agentHost, exporter }) {
+export async function installSdk({ protocol, timeoutMillis, exportTimeoutMillis, version, agentHost, reachability, exporter }) {
+  const sender = exporter ?? await otlpExporter(protocol, timeoutMillis);
   const provider = new TracerProvider({
     resource: telemetryResource({ version, agentHost }),
     spanProcessors: [
-      new BatchSpanProcessor({ exporter: exporter ?? await otlpExporter(protocol, timeoutMillis), exportTimeoutMillis }),
+      new BatchSpanProcessor({ exporter: reachability ? guardedExporter(sender, reachability) : sender, exportTimeoutMillis }),
     ],
   });
   context.setGlobalContextManager(new AsyncLocalStorageContextManager().enable());

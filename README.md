@@ -130,6 +130,14 @@ writes the file decides where traces go. Once configured, the plugin passes the
 same settings on to PLexus and the images it starts, and sets
 `PLEXUS_TELEMETRY=1` for them unless it is already set.
 
+Telemetry never holds up a tool or prints anything. Spans are sent in the
+background, and a command waits at most a second for its last ones as it
+ends. A collector that cannot be reached is remembered in
+`$XDG_CACHE_HOME/pharo-agent/otel-reachability.json` (`~/.cache/...` by
+default, `%LOCALAPPDATA%` on Windows): until the time to try again, which
+starts at five minutes and doubles with each failure up to six hours, no SDK
+is loaded and nothing is sent. One export that gets through clears it.
+
 Each MCP tool call is a span, and so is each CLI command. A span is parented
 on the trace context its caller passes: the request's `_meta` for an MCP
 call, `TRACEPARENT` in the environment for a command. A span records names,
