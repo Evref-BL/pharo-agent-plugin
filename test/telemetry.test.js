@@ -252,7 +252,10 @@ function hermeticEnv() {
  */
 function runCli(args, env) {
   return new Promise((resolve, reject) => {
-    const child = spawn(process.execPath, ["--import", plexusHook, "--import", recordImports, binary, ...args], {
+    // The recorder needs module.registerHooks; without it, it would stop the
+    // CLI before it ran, and every comparison below would compare two crashes.
+    const recorder = canRecordImports ? ["--import", recordImports] : [];
+    const child = spawn(process.execPath, ["--import", plexusHook, ...recorder, binary, ...args], {
       cwd: os.tmpdir(),
       // The host running these tests may name its own project.
       env: { ...hermeticEnv(), ...env },
@@ -324,6 +327,8 @@ test("a CLI the settings file configures sends its span, parented on TRACEPARENT
       TRACEPARENT: `00-${traceId}-${parentId}-01`,
     }));
     const plain = /** @type {any} */ (await runCli(["--help"], { XDG_CONFIG_HOME: bare }));
+    assert.equal(plain.status, 0);
+    assert.match(plain.stdout, /^Usage:/);
     assert.equal(traced.status, plain.status);
     assert.equal(traced.stdout, plain.stdout);
     assert.equal(traced.stderr, plain.stderr);
@@ -357,6 +362,7 @@ test("a CLI whose traces have nowhere to go prints the same and exits the same",
     }));
     const elapsed = Date.now() - started;
     const plain = /** @type {any} */ (await runCli(["image", "bogus"], { XDG_CONFIG_HOME: bare }));
+    assert.match(plain.stderr, /No \.pharo-agent\/config\.json found/);
     assert.equal(failing.status, plain.status);
     assert.notEqual(failing.status, 0);
     assert.equal(failing.stdout, plain.stdout);
