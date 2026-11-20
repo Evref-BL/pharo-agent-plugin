@@ -6,6 +6,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { context, propagation } from "@opentelemetry/api";
 import { defaultPharoMcpVersion, imageToolAnswers } from "@evref-bl/plexus";
 
 // The release's own values and words: a test reads what the pinned PLexus
@@ -462,7 +463,9 @@ async function listing(world, endpoint, timeoutMs) {
 
 /**
  * A call, recorded with what its caller asked of the wait: the options as
- * given, a signal said by whether there was one.
+ * given, a signal said by whether there was one. The trace context PLexus
+ * would pass on in the request's `_meta` is recorded with it, when there is
+ * one.
  *
  * @param {{ url: string }} endpoint
  * @param {string} name
@@ -472,12 +475,16 @@ async function listing(world, endpoint, timeoutMs) {
 export async function callTool(endpoint, name, args = {}, options = {}) {
   const world = readWorld();
   const { signal, ...waits } = options;
+  /** @type {Record<string, string>} */
+  const meta = {};
+  propagation.inject(context.active(), meta);
   world.calls.push({
     op: "callTool",
     url: endpoint.url,
     tool: name,
     arguments: args,
     options: { ...waits, ...(signal ? { signal: true } : {}) },
+    ...(meta.traceparent ? { traceparent: meta.traceparent } : {}),
   });
   writeWorld(world);
   const [diskName, image] = answering(world, endpoint);
