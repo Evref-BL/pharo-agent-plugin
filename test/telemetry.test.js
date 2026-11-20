@@ -9,6 +9,7 @@ import { fileURLToPath } from "node:url";
 import {
   applySettingsFile,
   argumentNames,
+  clientAttributes,
   configuredExportTimeout,
   errorType,
   exportProtocol,
@@ -211,6 +212,20 @@ test("a name is kept only when it looks like an identifier", () => {
   assert.deepEqual(argumentNames(undefined), []);
 });
 
+test("the agent host is named as its initialize request names it, when that reads as a product and a version", () => {
+  assert.deepEqual(clientAttributes({ name: "claude-code", version: "2.1.3" }), {
+    "pharo_agent.client.name": "claude-code",
+    "pharo_agent.client.version": "2.1.3",
+  });
+  assert.deepEqual(clientAttributes({ name: "Visual Studio Code", version: "1.106.0-insider" }), {
+    "pharo_agent.client.name": "Visual Studio Code",
+    "pharo_agent.client.version": "1.106.0-insider",
+  });
+  assert.deepEqual(clientAttributes({ name: "/Users/me/agent", version: "built by me" }), {});
+  assert.deepEqual(clientAttributes({ name: 7, version: "a".repeat(65) }), {});
+  assert.deepEqual(clientAttributes(undefined), {});
+});
+
 test("an error's type is its JSON-RPC code or its class name, never its message", () => {
   assert.equal(errorType(Object.assign(new Error("MCP error -32602: bad"), { name: "McpError", code: -32602 })), "-32602");
   assert.equal(errorType(new TypeError("secret /Users/me/project")), "TypeError");
@@ -219,7 +234,7 @@ test("an error's type is its JSON-RPC code or its class name, never its message"
   assert.equal(errorType("thrown string"), "_OTHER");
 });
 
-test("the resource is the service, its version, the OS family, the host and the configured attributes", () => {
+test("the resource is the service, its version, the OS family, Node's version, the host and the configured attributes", () => {
   const previous = process.env.OTEL_RESOURCE_ATTRIBUTES;
   process.env.OTEL_RESOURCE_ATTRIBUTES = "deployment.environment.name=field,service.name=overridden";
   try {
@@ -229,6 +244,8 @@ test("the resource is the service, its version, the OS family, the host and the 
       "service.name": "pharo-agent",
       "service.version": "9.9.9",
       "os.type": "windows",
+      "process.runtime.name": "nodejs",
+      "process.runtime.version": process.versions.node,
       "pharo_agent.agent_host": "codex",
     });
   } finally {
@@ -337,7 +354,7 @@ test("a CLI the settings file configures sends its span, parented on TRACEPARENT
     assert.equal(spans[0].traceId, traceId);
     assert.equal(spans[0].parentSpanId, parentId);
     const resource = Object.fromEntries(resourceSpans[0].resource.attributes.map((each) => [each.key, each.value.stringValue]));
-    assert.deepEqual(Object.keys(resource).sort(), ["os.type", "service.name", "service.version"]);
+    assert.deepEqual(Object.keys(resource).sort(), ["os.type", "process.runtime.name", "process.runtime.version", "service.name", "service.version"]);
     assert.equal(resource["service.name"], "pharo-agent");
   } finally {
     await receiver.close();

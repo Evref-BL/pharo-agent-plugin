@@ -325,6 +325,7 @@ export async function serveImagesMcp(resolveProjectRoot, selectedImage, transpor
       argumentsValue: request.params.arguments,
       meta: request.params._meta,
       protocolVersion,
+      client: server.getClientVersion(),
     },
     () => callTool(request),
   ));

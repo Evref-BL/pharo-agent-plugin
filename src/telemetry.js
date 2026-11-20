@@ -392,6 +392,27 @@ async function inSpan(name, options, parent, run, failure) {
 // MCP names its protocol versions by date.
 const protocolVersionPattern = /^\d{4}-\d{2}-\d{2}$/;
 
+// A client names itself as a product does, and gives a version that starts
+// with a digit.
+const clientNamePattern = /^[A-Za-z][A-Za-z0-9 ._-]{0,63}$/;
+const clientVersionPattern = /^\d[0-9A-Za-z.+-]{0,63}$/;
+
+/**
+ * Which agent host called, and which version of it, as its initialize
+ * request named itself: each kept only when it reads as a product name or a
+ * version.
+ *
+ * @param {{ name?: unknown, version?: unknown }} [client]
+ */
+export function clientAttributes(client) {
+  const name = client?.name;
+  const version = client?.version;
+  return {
+    ...(typeof name === "string" && clientNamePattern.test(name) ? { "pharo_agent.client.name": name } : {}),
+    ...(typeof version === "string" && clientVersionPattern.test(version) ? { "pharo_agent.client.version": version } : {}),
+  };
+}
+
 /**
  * A tools/call this package's MCP server answers: a SERVER span, its parent
  * the trace context the request's `_meta` carries (SEP-414), if any.
@@ -402,17 +423,19 @@ const protocolVersionPattern = /^\d{4}-\d{2}-\d{2}$/;
  *   argumentsValue?: unknown,
  *   meta?: Record<string, unknown>,
  *   protocolVersion?: string,
+ *   client?: { name?: unknown, version?: unknown },
  * }} call
  * @param {() => Promise<T>} run
  * @returns {Promise<T>}
  */
-export function serveToolCall({ tool, argumentsValue, meta, protocolVersion }, run) {
+export function serveToolCall({ tool, argumentsValue, meta, protocolVersion, client }, run) {
   const parent = parentFrom(meta, { traceparent: "traceparent", tracestate: "tracestate", baggage: "baggage" });
   const attributes = {
     ...toolAttributes(tool, argumentsValue),
     "network.transport": "pipe",
     ...(typeof protocolVersion === "string" && protocolVersionPattern.test(protocolVersion)
       ? { "mcp.protocol.version": protocolVersion } : {}),
+    ...clientAttributes(client),
   };
   return inSpan(
     toolSpanName(tool),
