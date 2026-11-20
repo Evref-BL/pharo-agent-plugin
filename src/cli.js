@@ -27,12 +27,14 @@ import { callImageTool, imageTarget, listImageTools, toolContract } from "./gate
 import { serveImagesMcp } from "./mcpServer.js";
 import { startAgentImage, stopAgentImage } from "./live.js";
 import { findProjectRoot, readConfig } from "./project.js";
+import { recordArgumentNames, recordUnknownArgumentNames, runCommand } from "./telemetry.js";
 import {
   isToolName,
   resultText,
   toolArguments,
   toolListing,
   toolUsage,
+  undeclaredFlags,
 } from "./toolCommand.js";
 
 function parseInit(args) {
@@ -194,7 +196,13 @@ async function runTool([toolName, ...words]) {
   }
   const target = await imageTarget(findProjectRoot(), image);
   const contract = help.rest.length === 0 ? undefined : await toolContract(target, toolName);
+  if (contract) {
+    // Refused here, such a call never reaches the image, whose span would
+    // otherwise say which names the caller expected.
+    recordUnknownArgumentNames(undeclaredFlags(help.rest, contract.inputSchema));
+  }
   const argumentsValue = contract ? toolArguments(toolName, help.rest, contract.inputSchema) : {};
+  recordArgumentNames(argumentsValue);
   let result;
   try {
     // The schema read for the arguments also gives the time limit the image
@@ -290,7 +298,36 @@ async function runImageCommand(projectRoot, subcommand, args) {
   throw new Error(`Unsupported image command: ${subcommand ?? ""}\n${usage(["image"])}`);
 }
 
+const imageSubcommands = new Set(["templates", "create", "list", "start", "stop", "use", "delete"]);
+
+/**
+ * What an invocation is, as its span names it: a command and subcommand
+ * this CLI knows, or the tool it calls. Never a word it does not know, which
+ * may be anything the caller typed. Undefined for the MCP server, whose
+ * spans are the calls it answers.
+ *
+ * @param {string[]} args
+ * @returns {{ command?: string, tool?: string } | undefined}
+ */
+function invocation(args) {
+  const [command, subcommand] = args;
+  if (command && isToolName(command)) {
+    return args.includes("--help") ? { command: "help" } : { tool: command };
+  }
+  if (!command || args.some((value) => value === "--help" || value === "help")) return { command: "help" };
+  if (command === "mcp") return undefined;
+  if (command === "image") {
+    return { command: imageSubcommands.has(subcommand) ? `image ${subcommand}` : "image" };
+  }
+  return command === "init" || command === "list" ? { command } : {};
+}
+
 export async function main(args) {
+  const traced = invocation(args);
+  return traced === undefined ? run(args) : runCommand(traced, () => run(args));
+}
+
+async function run(args) {
   const [command, ...rest] = args;
   // A snake_case word is an image tool; its own --help reads the tool's
   // schema, and the word help is a value it may take, not a request for

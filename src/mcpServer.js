@@ -2,7 +2,9 @@ import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import {
   CallToolRequestSchema,
+  LATEST_PROTOCOL_VERSION,
   ListToolsRequestSchema,
+  SUPPORTED_PROTOCOL_VERSIONS,
 } from "@modelcontextprotocol/sdk/types.js";
 import { imageToolAnswers } from "@evref-bl/plexus";
 import {
@@ -28,6 +30,7 @@ import {
 import { createImage, deleteImage, listImageTemplates, listImages, projectImages } from "./images.js";
 import { startAgentImage, stopAgentImage } from "./live.js";
 import { readConfig } from "./project.js";
+import { serveToolCall } from "./telemetry.js";
 
 // The host loads only tool names and these instructions at session start and
 // defers the rest, so this is what decides whether Pharo tools are searched
@@ -282,10 +285,24 @@ function failure(error) {
 }
 
 /**
+ * The protocol version a server answers an initialize request with, as the
+ * SDK's server chooses it: the client's when supported, its latest if not.
+ *
+ * @param {unknown} requested
+ */
+function negotiatedVersion(requested) {
+  return typeof requested === "string" && SUPPORTED_PROTOCOL_VERSIONS.includes(requested)
+    ? requested
+    : LATEST_PROTOCOL_VERSION;
+}
+
+/**
  * @param {() => string} resolveProjectRoot
  * @param {string} [selectedImage] the image a call naming none goes to, instead of the default
+ * @param {import("@modelcontextprotocol/sdk/shared/transport.js").Transport} [transport]
+ *   stdio unless given, for a test
  */
-export async function serveImagesMcp(resolveProjectRoot, selectedImage) {
+export async function serveImagesMcp(resolveProjectRoot, selectedImage, transport) {
   const server = new Server(
     { name: "pharo-agent", version },
     { capabilities: { tools: { listChanged: true } }, instructions: serverInstructions },
@@ -294,7 +311,21 @@ export async function serveImagesMcp(resolveProjectRoot, selectedImage) {
   // A host leaves by closing the server's input. An image still waited on
   // for answering late then has nobody to tell, and is asked nothing more.
   const hostLeft = new AbortController();
-  process.stdin.once("end", () => hostLeft.abort());
+  if (transport === undefined) {
+    process.stdin.once("end", () => hostLeft.abort());
+  }
+  const connection = transport ?? new StdioServerTransport();
+
+  // The SDK's server keeps the version it agreed on to itself, and a span
+  // names it. A handler set before connecting is called first, then the
+  // server's own.
+  /** @type {string | undefined} */
+  let protocolVersion;
+  connection.onmessage = (message) => {
+    if ("method" in message && message.method === "initialize" && "id" in message) {
+      protocolVersion = negotiatedVersion(message.params?.protocolVersion);
+    }
+  };
   // From the last listing: a call to a tool waits as long as the schema its
   // image listed for it allows. A tool found through tool_search, which no
   // listing names, has none.
@@ -320,13 +351,25 @@ export async function serveImagesMcp(resolveProjectRoot, selectedImage) {
   // A call the host cancels aborts its signal: the forwarded request is
   // dropped, and the SDK answers nothing for it. The host leaving does not
   // cancel one, since a client may close its input and still read the answer.
-  server.setRequestHandler(CallToolRequestSchema, async (request, extra) => {
-    try {
-      return await answerCall(request.params.name, request.params.arguments ?? {}, extra.signal);
-    } catch (error) {
-      return failure(error);
-    }
-  });
+  // The trace context a caller passes rides in the request's _meta, which
+  // the SDK hands the handler as it came: its schema lets unknown keys
+  // through.
+  server.setRequestHandler(CallToolRequestSchema, (request, extra) => serveToolCall(
+    {
+      tool: request.params.name,
+      argumentsValue: request.params.arguments,
+      meta: request.params._meta,
+      protocolVersion,
+      client: server.getClientVersion(),
+    },
+    async () => {
+      try {
+        return await answerCall(request.params.name, request.params.arguments ?? {}, extra.signal);
+      } catch (error) {
+        return failure(error);
+      }
+    },
+  ));
 
   /**
    * @param {string} tool
@@ -424,5 +467,6 @@ export async function serveImagesMcp(resolveProjectRoot, selectedImage) {
     }
   }
 
-  await server.connect(new StdioServerTransport());
+  await server.connect(connection);
+  return server;
 }
