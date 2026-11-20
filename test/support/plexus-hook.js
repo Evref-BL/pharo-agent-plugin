@@ -5,10 +5,4 @@ import module from "node:module";
 import "./no-telemetry.js";
 import { resolve } from "./plexus-resolve.js";
 
-// registerHooks arrived in Node 22.15, after the 22.12 this package supports,
-// and register warns that it is deprecated where both exist.
-if (typeof module.registerHooks === "function") {
-  module.registerHooks({ resolve });
-} else {
-  module.register("./plexus-resolve.js", import.meta.url);
-}
+module.registerHooks({ resolve });

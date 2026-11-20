@@ -29,7 +29,7 @@ tested together, and gives the agent one command surface over the lot.
 
 ## Requirements
 
-- Node 22.12 or later.
+- Node 22.15 or later.
 - [Pharo Launcher](https://pharo-project.github.io/pharo-launcher/), which is
   where images and templates come from.
 - For editing source as files: macOS, which needs nothing more, or Linux with

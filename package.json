@@ -24,7 +24,7 @@
     "LICENSE"
   ],
   "engines": {
-    "node": ">=22.12.0"
+    "node": ">=22.15.0"
   },
   "scripts": {
     "check": "tsc --noEmit",
@@ -35,13 +35,13 @@
     "@evref-bl/pharo-mcp": "3.8.0",
     "@evref-bl/plexus": "0.16.0",
     "@modelcontextprotocol/sdk": "1.32.2",
-    "@opentelemetry/api": "1.9.1",
-    "@opentelemetry/context-async-hooks": "2.12.1",
-    "@opentelemetry/core": "2.12.1",
-    "@opentelemetry/exporter-trace-otlp-http": "0.223.2",
-    "@opentelemetry/exporter-trace-otlp-proto": "0.223.2",
-    "@opentelemetry/resources": "2.12.1",
-    "@opentelemetry/sdk-trace": "2.12.1"
+    "@opentelemetry/api": "1.10.0",
+    "@opentelemetry/context-async-hooks": "3.1.1",
+    "@opentelemetry/core": "3.1.1",
+    "@opentelemetry/exporter-trace-otlp-http": "0.301.2",
+    "@opentelemetry/exporter-trace-otlp-proto": "0.301.2",
+    "@opentelemetry/resources": "3.1.1",
+    "@opentelemetry/sdk-trace": "3.1.1"
   },
   "devDependencies": {
     "@types/node": "^22.20.5",

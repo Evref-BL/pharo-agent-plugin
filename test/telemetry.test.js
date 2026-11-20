@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import http from "node:http";
-import module from "node:module";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -255,10 +254,7 @@ function hermeticEnv() {
  */
 function runCli(args, env, cwd = os.tmpdir()) {
   return new Promise((resolve, reject) => {
-    // The recorder needs module.registerHooks; without it, it would stop the
-    // CLI before it ran, and every comparison below would compare two crashes.
-    const recorder = canRecordImports ? ["--import", recordImports] : [];
-    const child = spawn(process.execPath, ["--import", plexusHook, ...recorder, binary, ...args], {
+    const child = spawn(process.execPath, ["--import", plexusHook, "--import", recordImports, binary, ...args], {
       cwd,
       // The host running these tests may name its own project.
       env: { ...hermeticEnv(), ...env },
@@ -277,9 +273,7 @@ function runCli(args, env, cwd = os.tmpdir()) {
   });
 }
 
-const canRecordImports = typeof module.registerHooks === "function";
-
-test("an unconfigured CLI loads no OpenTelemetry beyond the API", { skip: !canRecordImports }, async () => {
+test("an unconfigured CLI loads no OpenTelemetry beyond the API", async () => {
   const home = temporaryDirectory();
   try {
     const run = /** @type {any} */ (await runCli(["--help"], { XDG_CONFIG_HOME: home }));
