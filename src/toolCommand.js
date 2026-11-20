@@ -38,9 +38,19 @@ export function positionalProperty(schema) {
   return required.length === 0 && names.length === 1 ? names[0] : undefined;
 }
 
+/** The argument a flag names, as written or in kebab case, or undefined. */
+function declaredName(flag, properties) {
+  return Object.keys(properties).find((each) => each === flag || kebab(each) === flag);
+}
+
+/** Whether an argument is a flag that needs no value. */
+function isBoolean(property) {
+  const types = typesOf(property);
+  return types.includes("boolean") && !types.includes("string");
+}
+
 function propertyNamed(flag, schema, toolName) {
-  const properties = schema?.properties ?? {};
-  const name = Object.keys(properties).find((each) => each === flag || kebab(each) === flag);
+  const name = declaredName(flag, schema?.properties ?? {});
   if (!name) {
     throw new Error(`${toolName} has no argument --${flag}. Its arguments: ${flagsText(schema)}.`);
   }
@@ -88,6 +98,37 @@ function assign(parsed, name, value, property, toolName) {
     throw new Error(`${toolName} takes --${name} once.`);
   }
   parsed[name] = scalar(value, property, name, toolName);
+}
+
+/**
+ * The flags in the words that the schema does not declare, as they were
+ * typed, without their dashes: the ones toolArguments refuses. A word that a
+ * declared flag takes as its value is not a flag; the word after an unknown
+ * flag is, when it starts with --, since nothing says that flag takes a value.
+ *
+ * @param {string[]} words
+ * @param {any} schema
+ * @returns {string[]}
+ */
+export function undeclaredFlags(words, schema) {
+  const properties = schema?.properties ?? {};
+  /** @type {string[]} */
+  const unknown = [];
+  for (let index = 0; index < words.length; index += 1) {
+    const word = words[index];
+    if (!word.startsWith("--") || word.length <= 2) continue;
+    const [flag, inline] = word.slice(2).split(/=(.*)/s, 2);
+    const name = declaredName(flag, properties)
+      ?? (flag.startsWith("no-") ? declaredName(flag.slice(3), properties) : undefined);
+    if (name === undefined) {
+      unknown.push(flag);
+      continue;
+    }
+    if (inline !== undefined) continue;
+    const next = words[index + 1];
+    if (!isBoolean(properties[name]) || next === "true" || next === "false") index += 1;
+  }
+  return unknown;
 }
 
 /**
