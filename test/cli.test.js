@@ -368,6 +368,39 @@ test("a tool call waits as the schema it read its arguments from allows", async 
   }, { defaultImage: "dev" });
 });
 
+// As the server says it with the answer; on stderr here, so that the answer
+// a redirect or a script keeps is the image's own.
+test("a tool call that names no image says on stderr which image answered while others run", async () => {
+  await inProject(async (root) => {
+    const unnamed = run(["evaluate", "--json"], root);
+    assert.equal(unnamed.status, 0, unnamed.stderr);
+    assert.deepEqual(JSON.parse(unnamed.stdout), { content: [{ type: "text", text: "'Pharo14.0.0SNAPSHOT'" }] });
+    assert.equal(
+      unnamed.stderr,
+      'No image was named, so the call went to dev, the default image. p13 runs too: pass image: "p13" to call it.\n',
+    );
+
+    const named = run(["evaluate", "--image", "dev"], root);
+    assert.equal(named.stdout, "'Pharo14.0.0SNAPSHOT'\n");
+    assert.equal(named.stderr, "");
+  }, {
+    images: {
+      "proj-dev": runningImage(41000, {
+        answers: [{ tool: "evaluate", result: { content: [{ type: "text", text: "'Pharo14.0.0SNAPSHOT'" }] } }],
+      }),
+      "proj-p13": runningImage(42000),
+    },
+  }, { defaultImage: "dev" });
+});
+
+test("a tool call that names no image, with no other image running, says nothing more", async () => {
+  await inProject(async (root) => {
+    const unnamed = run(["class_get"], root);
+    assert.equal(unnamed.stdout, "nil\n");
+    assert.equal(unnamed.stderr, "");
+  }, { images: { "proj-dev": runningImage(41000), "proj-p13": pinnedImage() } }, { defaultImage: "dev" });
+});
+
 test("a tool call that fails says on stderr what became of the image, and fails the command", async () => {
   await inProject(async (root) => {
     const result = run(["image_evaluate", "--image", "p13"], root);

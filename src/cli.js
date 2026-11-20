@@ -3,6 +3,7 @@ import {
   callFailedText,
   callsNote,
   createAnswer,
+  defaultAnsweredNote,
   defaultChosen,
   deleteAnswer,
   listAnswer,
@@ -214,6 +215,10 @@ async function runTool([toolName, ...words]) {
     throw new Error(failed);
   }
   console.log(json.present ? JSON.stringify(result, null, 2) : resultText(result));
+  // Which image answered, where the call named none, on stderr: the answer a
+  // redirect or a script keeps stays the image's own.
+  const note = image === undefined ? defaultAnsweredNote(target) : undefined;
+  if (note !== undefined) console.error(note);
   return exitCodeForToolResult(result);
 }
 

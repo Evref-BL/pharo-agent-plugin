@@ -72,7 +72,8 @@ tool command, `list` and `mcp` take `--image <name>`, which scopes a call
 rather than naming a subject, and the default image answers without it. Over
 `mcp`, each Pharo tool takes the same `image` argument. Starting an image other
 than the default, from the terminal or over `mcp`, says to pass its name to its
-tools.
+tools, and while it runs, the answer to a call that names no image says the
+default image answered.
 
 ## When an image exits
 
