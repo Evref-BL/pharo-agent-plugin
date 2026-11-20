@@ -22,7 +22,7 @@ pharo-agent init --host <claude|codex|opencode>
   `opencode.json`, keeping the rest of that file. See below.
 - `.pharo-agent/config.json`, which makes the directory a project: the scope
   that tells its images from other projects' (see [Images](images.md)), taken
-  from the directory's name, and the mount root.
+  from the directory's name, the mount root, and the host it was set up for.
 - `.pharo-agent/.gitignore`, which keeps `config.json`, `mounts/` and
   `runtime/` out of git, adding whichever of them it lacks. They describe this
   checkout's images, so a clone, or a worktree outside the project, runs

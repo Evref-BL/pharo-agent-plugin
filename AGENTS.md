@@ -53,7 +53,12 @@ for that project only, and nothing else of that file changes.
 - Tests never start a Pharo image. `npm test` loads `test/support/plexus-hook.js`
   first, which hands every import of `@evref-bl/plexus` the fake beside it; a
   test that spawns `pharo-agent` passes the same hook with `--import`, and sets
-  the fake's store up with `useFakePlexus`.
+  the fake's store up with `useFakePlexus`. The hook also drops the shell's
+  `OTEL_*` and trace context, and looks for the telemetry settings file where
+  there is none, so a test sends traces only where it says.
+- Telemetry code uses `@opentelemetry/api` alone; only `src/telemetrySdk.js`
+  imports the SDK, and only once the settings name an exporter. A span records
+  names, never values.
 - Use disposable directories for initializer tests. Preserve existing user
   guidance outside the plugin's marked managed block.
 - Do not claim live image or mount validation without a disposable image and

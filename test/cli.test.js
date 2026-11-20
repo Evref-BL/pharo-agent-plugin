@@ -146,9 +146,9 @@ test("each image command prints its tool's text, and with --json the JSON it pri
         await said(["image", "list"]),
         [
           "2 images, 1 running. The default image is dev.",
-          "images (each mcp=" + defaultPharoMcpVersion + "):",
-          '  dev state=running template="Pharo 13.0 - 64bit"',
-          '  p13 state=stopped pharo=13.0 template="Pharo 13.0 - 64bit (stable)"',
+          "images:",
+          '  dev state=running template="Pharo 13.0 - 64bit" mcp=' + defaultPharoMcpVersion,
+          '  p13 state=stopped pharo=13.0 template="Pharo 13.0 - 64bit (stable)" mcp=' + defaultPharoMcpVersion,
         ].join("\n"),
       );
       assert.equal(await said(["image", "use", "p13"]), "The project's default image is p13 now.");

@@ -668,9 +668,9 @@ test("image_list names the image the server is started with as the default", () 
     assert.equal(
       textOf({ served, result }),
       "2 images, 2 running. The default image is ci.\n"
-        + `images (each state=running pharo=14.0 template="Pharo 14.0 - 64bit (stable)" mcp=${defaultPharoMcpVersion}):\n`
-        + "  ci\n"
-        + "  dev",
+        + "images:\n"
+        + `  ci state=running pharo=14.0 template="Pharo 14.0 - 64bit (stable)" mcp=${defaultPharoMcpVersion}\n`
+        + `  dev state=running pharo=14.0 template="Pharo 14.0 - 64bit (stable)" mcp=${defaultPharoMcpVersion}`,
     );
   }, { images: { "proj-ci": runningImage(42000), "proj-dev": runningImage(41000) } }, { defaultImage: "dev" });
 });
@@ -706,10 +706,10 @@ test("image_list says where a mounted source is, from the project when it is ins
     assert.equal(
       textOf(callTool(cwd, "image_list")),
       "3 images, 2 running. The default image is dev.\n"
-        + `images (each pharo=14.0 template="Pharo 14.0 - 64bit (stable)" mcp=${defaultPharoMcpVersion}):\n`
-        + "  ci state=running mount=/elsewhere/ci\n"
-        + "  dev state=running mount=.pharo-agent/mounts/dev\n"
-        + "  idle state=stopped",
+        + "images:\n"
+        + `  ci state=running pharo=14.0 template="Pharo 14.0 - 64bit (stable)" mcp=${defaultPharoMcpVersion} mount=/elsewhere/ci\n`
+        + `  dev state=running pharo=14.0 template="Pharo 14.0 - 64bit (stable)" mcp=${defaultPharoMcpVersion} mount=.pharo-agent/mounts/dev\n`
+        + `  idle state=stopped pharo=14.0 template="Pharo 14.0 - 64bit (stable)" mcp=${defaultPharoMcpVersion}`,
     );
   }, {
     images: { "proj-ci": runningImage(42000), "proj-dev": runningImage(41000), "proj-idle": pinnedImage() },
