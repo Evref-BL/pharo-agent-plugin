@@ -21,7 +21,8 @@ export function osType(platform = process.platform) {
 
 /**
  * What every span of this process is from: this package, its version, the OS
- * family, the host the project was set up for, and OTEL_RESOURCE_ATTRIBUTES.
+ * family, Node's version, the host the project was set up for, and
+ * OTEL_RESOURCE_ATTRIBUTES, which can add to these but not replace them.
  * None of the default detectors, which add the hostname, the command line
  * and the executable's path.
  *
@@ -32,6 +33,8 @@ export function telemetryResource({ version, agentHost, platform }) {
     "service.name": "pharo-agent",
     "service.version": version,
     "os.type": osType(platform),
+    "process.runtime.name": "nodejs",
+    "process.runtime.version": process.versions.node,
     ...(agentHost ? { "pharo_agent.agent_host": agentHost } : {}),
   }));
 }

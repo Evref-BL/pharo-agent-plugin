@@ -130,6 +130,8 @@ test("a tools/call is a SERVER span, parented on the trace context in its _meta"
     "pharo_agent.argument.names": ["name"],
     "network.transport": "pipe",
     "mcp.protocol.version": LATEST_PROTOCOL_VERSION,
+    "pharo_agent.client.name": "test",
+    "pharo_agent.client.version": "1",
   });
   assert.equal(span.status.code, SpanStatusCode.UNSET);
   assertNoValues(span);
