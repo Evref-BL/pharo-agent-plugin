@@ -23,7 +23,7 @@ wrong:
 - a search missed a tool that existed, or found it only after several tries;
 - an answer was wrong, partial, too large to use, or said less than you needed;
 - a warning or the Pharo guidance sent you the wrong way;
-- you fell back to `image_evaluate`, a shell or the files because no tool did
+- you fell back to `evaluate`, a shell or the files because no tool did
   what you needed;
 - one step took several attempts.
 

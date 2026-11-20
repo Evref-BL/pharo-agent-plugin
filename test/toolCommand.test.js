@@ -17,8 +17,8 @@ const methodCompile = schemaOf("method_compile");
 const methodSearch = schemaOf("method_search");
 const noStdin = () => assert.fail("stdin was read");
 
-test("a tool is a snake_case word, a command is not", () => {
-  for (const word of ["class_get", "test_run", "method_reference_search"]) assert.ok(isToolName(word), word);
+test("a tool is a snake_case word or one lowercase word, a command is not", () => {
+  for (const word of ["class_get", "test_run", "method_reference_search", "evaluate"]) assert.ok(isToolName(word), word);
   for (const word of ["list", "image", "init", "mcp", "help", "--help", "Class_get", "class-get"]) {
     assert.equal(isToolName(word), false, word);
   }

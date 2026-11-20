@@ -6,17 +6,27 @@ import {
   ListToolsRequestSchema,
   SUPPORTED_PROTOCOL_VERSIONS,
 } from "@modelcontextprotocol/sdk/types.js";
+import { imageToolAnswers } from "@evref-bl/plexus";
 import {
   callImageTool,
   imageTarget,
   listImageTools,
   missingDefault,
-  toolResult,
   version,
   withImageSelector,
 } from "./gateway.js";
+import {
+  callFailedText,
+  createAnswer,
+  deleteAnswer,
+  listAnswer,
+  noDefaultImage,
+  startAnswer,
+  stopAnswer,
+  templatesAnswer,
+} from "./answers.js";
 import { createImage, deleteImage, listImageTemplates, listImages, projectImages } from "./images.js";
-import { callsNote, startAgentImage, stopAgentImage } from "./live.js";
+import { startAgentImage, stopAgentImage } from "./live.js";
 import { readConfig } from "./project.js";
 import { serveToolCall } from "./telemetry.js";
 
@@ -44,6 +54,19 @@ const nameProperty = {
   description: "Image name. Defaults to the default image.",
 };
 
+// A schema is a description, not a guard: nothing between the model and here
+// enforces it, so each call is checked against the schema it was offered, and
+// an argument the schema does not name is refused with the ones it does, as
+// MCP refuses one, rather than dropped.
+/**
+ * @param {Record<string, object>} properties
+ * @param {string[]} [required]
+ * @returns {import("@modelcontextprotocol/sdk/types.js").Tool["inputSchema"]}
+ */
+function schema(properties, required) {
+  return { type: "object", properties, ...(required ? { required } : {}), additionalProperties: false };
+}
+
 // This server's own tools, in the order a project meets them: create an
 // image, start it, and the image's tools join the list. Listed whether or not
 // an image is running, so the list is never empty — a host that caches tools
@@ -53,84 +76,84 @@ const projectTools = [
   {
     name: "image_templates",
     description: "List the templates images can be created from, with their categories.",
-    inputSchema: { type: "object", properties: {} },
+    inputSchema: schema({}),
   },
   {
     name: "image_create",
     description:
       "Create an image from a template, with the pinned Pharo MCP in it, without "
       + "starting it. The first image created is the default.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        name: {
-          type: "string",
-          description: "What the image is for, named like a branch.",
-        },
-        template: {
-          type: "string",
-          description: "Template name, as image_templates gives it.",
-        },
-        category: {
-          type: "string",
-          description: "Template category, for a name two categories offer.",
-        },
+    inputSchema: schema({
+      name: {
+        type: "string",
+        description: "What the image is for, named like a branch.",
       },
-      required: ["name", "template"],
-    },
+      template: {
+        type: "string",
+        description: "Template name, as image_templates gives it.",
+      },
+      category: {
+        type: "string",
+        description: "Template category, for a name two categories offer.",
+      },
+    }, ["name", "template"]),
   },
   {
     name: "image_list",
     description:
       "List this project's images, which is the default, and which are running now, "
       + "with the source mount of each running one.",
-    inputSchema: { type: "object", properties: {} },
+    inputSchema: schema({}),
   },
   {
     name: "image_start",
     description:
       "Start an image; it refuses one that is already running. Its tools are "
-      + "listed once it answers. On macOS and Linux its source also mounts as files.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        name: nameProperty,
-        display: {
-          type: "string",
-          enum: ["headless", "interactive"],
-          description: "headless, the default, or interactive to open the image's window.",
-        },
+      + "listed once it answers. On macOS and Linux its source also mounts as files, "
+      + "at the path its answer gives.",
+    inputSchema: schema({
+      name: nameProperty,
+      display: {
+        type: "string",
+        enum: ["headless", "interactive"],
+        description: "headless, the default, or interactive to open the image's window.",
       },
-    },
+    }),
   },
   {
     name: "image_stop",
     description: "Kill an image, without saving it, and unmount its source.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        name: nameProperty,
-        all: {
-          type: "boolean",
-          description: "Stop every running image of this project instead.",
-        },
+    inputSchema: schema({
+      name: nameProperty,
+      all: {
+        type: "boolean",
+        description: "Stop every running image of this project instead.",
       },
-    },
+    }),
   },
   {
     name: "image_delete",
     description: "Delete a stopped image and its files.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        name: { type: "string", description: "Image name." },
-      },
-      required: ["name"],
-    },
+    inputSchema: schema({ name: { type: "string", description: "Image name." } }, ["name"]),
   },
 ];
 
 const projectToolNames = new Set(projectTools.map((tool) => tool.name));
+
+/** The names of this server's own tools, which the texts it answers may name. */
+export const imageToolNames = [...projectToolNames];
+
+// The one argument of a forwarded call this server reads: the rest is the
+// image's to check, against its own schema.
+const imageArgument = /** @type {const} */ ({ type: "object", properties: { image: { type: "string" } } });
+
+/**
+ * The input schema each running image listed for each of its tools, by image
+ * and then by tool, as of the last listing: a call passes it on, so that it
+ * waits as long as the image's own limit for the tool allows.
+ *
+ * @typedef {Map<string, Map<string, import("@modelcontextprotocol/sdk/types.js").Tool["inputSchema"]>>} ListedSchemas
+ */
 
 /** The image a call that names none goes to: the server's, or the project's. */
 function serverDefaultImage(projectRoot, selectedImage) {
@@ -164,6 +187,7 @@ export const listingTimeoutMs = 5_000;
  * @param {string | undefined} selectedImage
  * @param {() => void} listChanged
  * @param {AbortSignal} hostLeft
+ * @returns {Promise<{ tools: any[], schemas: ListedSchemas }>}
  */
 async function runningImageTools(projectRoot, selectedImage, listChanged, hostLeft) {
   let defaultImage;
@@ -175,7 +199,7 @@ async function runningImageTools(projectRoot, selectedImage, listChanged, hostLe
     rows = await images.list();
   } catch (error) {
     console.error(`pharo-agent: no image tools listed: ${error.message}`);
-    return [];
+    return { tools: [], schemas: new Map() };
   }
   // The default's first: where two images hold a tool, the schema listed is
   // the one a call naming no image meets.
@@ -200,6 +224,8 @@ async function runningImageTools(projectRoot, selectedImage, listChanged, hostLe
   const held = new Map();
   /** @type {Set<string>} */
   const listed = new Set();
+  /** @type {ListedSchemas} */
+  const schemas = new Map();
   listings.forEach((listing, index) => {
     const { name } = ordered[index];
     if (listing.status === "rejected") {
@@ -211,6 +237,7 @@ async function runningImageTools(projectRoot, selectedImage, listChanged, hostLe
       return;
     }
     listed.add(name);
+    schemas.set(name, new Map(listing.value.map((tool) => [tool.name, tool.inputSchema])));
     for (const tool of listing.value) {
       if (projectToolNames.has(tool.name)) continue;
       const entry = held.get(tool.name);
@@ -219,7 +246,10 @@ async function runningImageTools(projectRoot, selectedImage, listChanged, hostLe
     }
   });
   const absence = defaultAbsence(rows, listed, defaultImage, selectedImage !== undefined);
-  return [...held.values()].map(({ tool, holders }) => withImageSelector(tool, holders, defaultImage, absence));
+  return {
+    tools: [...held.values()].map(({ tool, holders }) => withImageSelector(tool, holders, defaultImage, absence)),
+    schemas,
+  };
 }
 
 /**
@@ -238,20 +268,18 @@ function defaultAbsence(rows, listed, defaultImage, chosen) {
   return own.running ? "does not answer" : "is not running";
 }
 
-// A schema is a description, not a guard: nothing between the model and here
-// enforces it, so a missing argument is named here rather than somewhere
-// further in.
-function requiredString(argumentsValue, key, tool, purpose) {
-  const value = argumentsValue[key];
-  if (typeof value !== "string" || value === "") {
-    throw new Error(`${tool} needs ${key}, ${purpose}.`);
-  }
-  return value;
+/** @param {string} text */
+function textResult(text, isError = false) {
+  return { content: [{ type: "text", text }], ...(isError ? { isError: true } : {}) };
 }
 
-function optionalString(argumentsValue, key) {
-  const value = argumentsValue[key];
-  return typeof value === "string" && value !== "" ? value : undefined;
+/**
+ * Any refusal, this package's or PLexus's, as a result the caller reads: its
+ * message alone. Thrown, it reached a host as a JSON-RPC error, which one
+ * host showed as its own failure to call the tool.
+ */
+function failure(error) {
+  return textResult(error instanceof Error ? error.message : String(error), true);
 }
 
 /**
@@ -296,6 +324,11 @@ export async function serveImagesMcp(resolveProjectRoot, selectedImage, transpor
       protocolVersion = negotiatedVersion(message.params?.protocolVersion);
     }
   };
+  // From the last listing: a call to a tool waits as long as the schema its
+  // image listed for it allows. A tool found through tool_search, which no
+  // listing names, has none.
+  /** @type {ListedSchemas} */
+  let listedSchemas = new Map();
 
   server.setRequestHandler(ListToolsRequestSchema, async () => {
     let projectRoot;
@@ -308,18 +341,18 @@ export async function serveImagesMcp(resolveProjectRoot, selectedImage, transpor
     }
     // A host gone by the time an image answers is nobody to tell.
     const listChanged = () => { server.sendToolListChanged().catch(() => {}); };
-    return {
-      tools: [
-        ...projectTools,
-        ...(await runningImageTools(projectRoot, selectedImage, listChanged, hostLeft.signal)),
-      ],
-    };
+    const { tools, schemas } = await runningImageTools(projectRoot, selectedImage, listChanged, hostLeft.signal);
+    listedSchemas = schemas;
+    return { tools: [...projectTools, ...tools] };
   });
 
+  // A call the host cancels aborts its signal: the forwarded request is
+  // dropped, and the SDK answers nothing for it. The host leaving does not
+  // cancel one, since a client may close its input and still read the answer.
   // The trace context a caller passes rides in the request's _meta, which
   // the SDK hands the handler as it came: its schema lets unknown keys
   // through.
-  server.setRequestHandler(CallToolRequestSchema, (request) => serveToolCall(
+  server.setRequestHandler(CallToolRequestSchema, (request, extra) => serveToolCall(
     {
       tool: request.params.name,
       argumentsValue: request.params.arguments,
@@ -327,73 +360,106 @@ export async function serveImagesMcp(resolveProjectRoot, selectedImage, transpor
       protocolVersion,
       client: server.getClientVersion(),
     },
-    () => callTool(request),
+    async () => {
+      try {
+        return await answerCall(request.params.name, request.params.arguments ?? {}, extra.signal);
+      } catch (error) {
+        return failure(error);
+      }
+    },
   ));
 
-  /** @param {import("@modelcontextprotocol/sdk/types.js").CallToolRequest} request */
-  async function callTool(request) {
-    const argumentsValue = request.params.arguments ?? {};
-    const tool = request.params.name;
+  /**
+   * @param {string} tool
+   * @param {Record<string, unknown>} argumentsValue
+   * @param {AbortSignal} signal
+   */
+  async function answerCall(tool, argumentsValue, signal) {
+    // Before the project: a call that breaks the schema it was offered is
+    // refused for that wherever it is made. Of a forwarded call, only the
+    // image it names is this server's to check.
+    const projectTool = projectTools.find((each) => each.name === tool);
+    const { image, ...imageArguments } = argumentsValue;
+    const refusal = projectTool
+      ? imageToolAnswers.checkArguments(projectTool, argumentsValue)
+      : imageToolAnswers.checkArguments({ name: tool, inputSchema: imageArgument }, image === undefined ? {} : { image });
+    if (refusal) return textResult(refusal, true);
     // Throws when there is no project, which is the answer the caller needs.
     const projectRoot = resolveProjectRoot();
 
     // Matched before the image's catalogue: these names belong to this
     // server, and an image that happened to hold one must not decide what
     // starting an image means.
-    if (tool === "image_templates") {
-      return toolResult({ ok: true, ...(await listImageTemplates(projectRoot)) });
-    }
-    if (tool === "image_create") {
-      const name = requiredString(argumentsValue, "name", tool, "the name the image will be called by");
-      const template = requiredString(argumentsValue, "template", tool, "a template name as image_templates gives it");
-      const category = optionalString(argumentsValue, "category");
-      return toolResult({
-        ok: true,
-        ...(await createImage(projectRoot, name, { template, ...(category ? { category } : {}) })),
-      });
-    }
-    if (tool === "image_list") {
-      return toolResult({ ok: true, ...(await listImages(projectRoot, serverDefaultImage(projectRoot, selectedImage))) });
-    }
-    if (tool === "image_start") {
-      const display = optionalString(argumentsValue, "display");
-      if (display !== undefined && display !== "headless" && display !== "interactive") {
-        throw new Error("image_start takes display headless or interactive.");
-      }
-      const started = await startAgentImage(
-        projectRoot,
-        optionalString(argumentsValue, "name") ?? selectedImage,
-        display ? { display } : {},
-      );
-      await server.sendToolListChanged();
-      const note = callsNote(started.name, serverDefaultImage(projectRoot, selectedImage));
-      return toolResult({ ok: true, ...started, ...(note ? { note } : {}) });
-    }
-    if (tool === "image_stop") {
-      // A name given with all reaches stopAgentImage, which refuses the pair,
-      // rather than be dropped for the reading that stops the most.
-      const stopped = argumentsValue.all === true
-        ? await stopAgentImage(projectRoot, optionalString(argumentsValue, "name"), { all: true })
-        : await stopAgentImage(projectRoot, optionalString(argumentsValue, "name") ?? selectedImage);
-      await server.sendToolListChanged();
-      return toolResult({ ok: true, ...stopped });
-    }
-    if (tool === "image_delete") {
-      const name = requiredString(argumentsValue, "name", tool, "the image to delete");
-      return toolResult({ ok: true, ...(await deleteImage(projectRoot, name)) });
+    if (projectTool) {
+      return textResult(imageToolAnswers.render(await projectToolAnswer(projectRoot, tool, argumentsValue)));
     }
 
     // Listed tools are the common ones, not the whole catalogue, and the image
     // answers for any tool it holds. Refusing a name this list does not carry
     // would hide tools that tool_search just found, and the image's own error
     // is the better answer for a name nothing holds.
-    const { image, ...imageArguments } = argumentsValue;
     const target = await imageTarget(
       projectRoot,
-      typeof image === "string" ? image : undefined,
+      /** @type {string | undefined} */ (image),
       { defaultImage: selectedImage },
     );
-    return toolResult(await callImageTool(target, tool, imageArguments));
+    const inputSchema = listedSchemas.get(target.name)?.get(tool);
+    try {
+      // The image's answer, an error or not, is the image's to word.
+      return await callImageTool(target, tool, imageArguments, { ...(inputSchema ? { inputSchema } : {}), signal });
+    } catch (error) {
+      const failed = await callFailedText(target, tool, error);
+      if (failed === undefined) throw error;
+      return textResult(failed, true);
+    }
+  }
+
+  /**
+   * What one of this server's own tools did, its arguments already checked
+   * against its schema.
+   *
+   * @param {string} projectRoot
+   * @param {string} tool
+   * @param {Record<string, any>} args
+   */
+  async function projectToolAnswer(projectRoot, tool, args) {
+    const defaultImage = serverDefaultImage(projectRoot, selectedImage);
+    // A start or a stop that names no image, with no default, is told what
+    // to do in this server's terms: the terminal's text names commands.
+    const named = (/** @type {string | undefined} */ name) => {
+      const resolved = name ?? defaultImage;
+      if (resolved === undefined) throw new Error(noDefaultImage());
+      return resolved;
+    };
+    switch (tool) {
+      case "image_templates":
+        return templatesAnswer(await listImageTemplates(projectRoot));
+      case "image_create":
+        return createAnswer(
+          await createImage(projectRoot, args.name, {
+            template: args.template,
+            ...(args.category === undefined ? {} : { category: args.category }),
+          }),
+        );
+      case "image_list":
+        return listAnswer(projectRoot, await listImages(projectRoot, defaultImage), selectedImage !== undefined);
+      case "image_start": {
+        const start = await startAgentImage(projectRoot, named(args.name), args.display ? { display: args.display } : {});
+        await server.sendToolListChanged();
+        return startAnswer(projectRoot, start, defaultImage);
+      }
+      case "image_stop": {
+        // A name given with all reaches stopAgentImage, which refuses the
+        // pair, rather than be dropped for the reading that stops the most.
+        const stopped = args.all
+          ? await stopAgentImage(projectRoot, args.name, { all: true })
+          : await stopAgentImage(projectRoot, named(args.name));
+        await server.sendToolListChanged();
+        return stopAnswer(stopped, args.all === true);
+      }
+      default:
+        return deleteAnswer(await deleteImage(projectRoot, args.name));
+    }
   }
 
   await server.connect(connection);

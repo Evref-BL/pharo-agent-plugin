@@ -76,9 +76,16 @@ the default for this server, in all of this and in `image_list`.
 another session starts, or that exits, tells it nothing, so a host's list is
 as old as its last listing.
 
+A call waits for the image's answer 30 s longer than the time limit the image
+keeps for it, the call's `timeoutSeconds` or the default the image listed, and
+at least a minute, which `PHARO_AGENT_CALL_SECONDS`, a whole number of
+seconds, raises. A call the host cancels is dropped and answered nothing; the
+image is not told, and goes on with it.
+
 The server's own `image_*` tools come first, listed whether or not an image is
 running, so a chat that has the plugin enabled can take a project from no
-images to a running one without a shell.
+images to a running one without a shell. The image commands print what the
+`image_*` tools answer; `--json` prints it as JSON, for a script.
 
 ## A different MCP in the image
 

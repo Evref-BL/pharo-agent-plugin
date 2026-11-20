@@ -1,5 +1,5 @@
-import { callImageTool } from "./gateway.js";
-import { olderMcpWarning, projectImages } from "./images.js";
+import { callImageTool, listImageTools } from "./gateway.js";
+import { projectImages } from "./images.js";
 import { readConfig, resolveImageName } from "./project.js";
 import {
   forgetProjection,
@@ -29,35 +29,30 @@ const projectedPlatforms = ["darwin", "linux"];
  * A machine that could mount may still be one that must not, so the
  * environment can turn projections off before anything is asked.
  *
+ * Turned off, or on a system PIFS has no daemon for, no source mounts by
+ * choice, and nothing is said: a start's answer without a mount says there is
+ * none. A setting it does not take is a mistake, and its reason is said.
+ *
  * @param {{
  *   env?: Record<string, string | undefined>,
  *   platform?: string,
  * }} [host]
+ * @returns {{ available: true } | { available: false, chosen: true } | { available: false, reason: string }}
  */
 export function projectionAvailability(host = {}) {
   const setting = (host.env ?? process.env)[projectionVariable];
   const platform = host.platform ?? process.platform;
-  if (setting === "off") {
-    return {
-      available: false,
-      reason: `Source projections are turned off by ${projectionVariable}=off.`,
-    };
-  }
+  if (setting === "off") return { available: false, chosen: true };
   if (setting) {
     // Any other value fails safe: an opt-out that ignored a typo, or a 0,
     // would mount on the very machine that asked not to be mounted on.
     return {
       available: false,
-      reason: `Source projections are off: ${projectionVariable} takes only off,`
-        + ` and is ${JSON.stringify(setting)}. Unset it to mount them where the platform allows.`,
+      reason: `${projectionVariable} takes only off, and is ${JSON.stringify(setting)}.`
+        + " Unset it to mount sources where the platform allows.",
     };
   }
-  if (!projectedPlatforms.includes(platform)) {
-    return {
-      available: false,
-      reason: `PIFS mounts source projections on macOS and Linux, not on this platform (${platform}).`,
-    };
-  }
+  if (!projectedPlatforms.includes(platform)) return { available: false, chosen: true };
   return { available: true };
 }
 
@@ -66,9 +61,9 @@ function sentence(text) {
   return /[.!?]$/.test(text) ? text : `${text}.`;
 }
 
-export function projectionUnavailableWarning(name, reason) {
-  return `${sentence(reason)} Image ${name} is running with its Pharo tools and no`
-    + " source projection; read and edit its code through the tools.";
+/** @param {string} text */
+function withoutFinalPeriod(text) {
+  return text.replace(/\.$/, "");
 }
 
 // The class-side PIFSServer messages this plugin sends into the image. The
@@ -115,6 +110,16 @@ export function projectionStartOutcome(printString) {
   };
 }
 
+// How long the image may take over the projection start: a Metacello load of
+// PIFS from GitHub on a cold image, the daemon, then a mount wait of at most
+// 10 s. An MCP with an evaluation time limit stops an evaluation at 30 s
+// unless told otherwise, which a cold start may outlast. The load alone took
+// 4.9 s in a new image with no PIFS clone; the whole start, daemon and mount
+// with it, is not timed, and the one trace that holds one, pifs-1's, created,
+// started and mounted in 29.7 s in all. This leaves four times that. The call
+// waits at least this plus 30 s.
+export const pifsStartSeconds = 120;
+
 export function pifsStopCode(projectionPort) {
   return `(Smalltalk globals at: #PIFSServer) stopOn: ${projectionPort}`;
 }
@@ -160,31 +165,66 @@ export function resultPrintString(result) {
 }
 
 /**
+ * What PIFS answered: its port, or why it could not mount. An answer that
+ * reads as neither is nothing, and goes to the host's log as it came. An
+ * error the image answers instead, such as an evaluation stopped at its time
+ * limit, is thrown with the line that says what happened.
+ *
  * @param {import("./gateway.js").Target} target
  * @param {string} mountPath
  * @param {string} imageName
  */
+/**
+ * The tool an image runs Smalltalk with, as it lists it: `evaluate`, or
+ * `image_evaluate` in an image whose MCP predates the rename. An image that
+ * lists neither has an MCP older still, which held `image_evaluate` without
+ * listing it.
+ *
+ * @param {{ name: string, inputSchema?: any }[]} tools
+ */
+export function evaluationTool(tools) {
+  return tools.find((tool) => tool.name === "evaluate") ?? tools.find((tool) => tool.name === "image_evaluate");
+}
+
 async function startProjection(target, mountPath, imageName) {
-  const result = await callImageTool(target, "image_evaluate", {
-    code: pifsStartCode(mountPath, imageName),
-  });
+  // Only an image whose MCP lists the limit is given one: an older MCP
+  // refuses an argument it does not know. The listing is the image's answer
+  // too, so one that fails fails the mount.
+  const evaluate = evaluationTool(await listImageTools(target));
+  const limited = evaluate?.inputSchema?.properties?.timeoutSeconds !== undefined;
+  const result = await callImageTool(
+    target,
+    evaluate?.name ?? "image_evaluate",
+    { code: pifsStartCode(mountPath, imageName), ...(limited ? { timeoutSeconds: pifsStartSeconds } : {}) },
+    limited && evaluate ? { inputSchema: evaluate.inputSchema } : {},
+  );
+  if (result?.isError === true) {
+    // The code catches PIFS's errors, so this is the image's own failure:
+    // the code stopped at its limit, never started, or did not compile. Its
+    // first line says which; the lines after it, where the code stopped and
+    // what the image advises whoever wrote the code, go to the host's log.
+    const text = textPartText(result);
+    if (text?.includes("\n")) console.error(`pharo-agent: ${target.name} answered the PIFS start with: ${text}`);
+    throw new Error(text?.split("\n")[0].trim() || "the image answered with an error and no text");
+  }
   // A refusal is PIFS's own: it stopped what it had started.
   const outcome = projectionStartOutcome(resultPrintString(result));
   if (!outcome) {
-    throw new Error(`PIFS did not report a projection port: ${JSON.stringify(result).slice(0, 500)}`);
+    console.error(`pharo-agent: PIFS answered no projection port for ${target.name}: ${JSON.stringify(result).slice(0, 500)}`);
   }
   return outcome;
 }
 
 /**
  * Start an image, the default one when none is named, and mount its source
- * where the machine allows it.
+ * where the machine allows it. The image as listed before the start comes
+ * back with it, for the answer: what every start files in, and which MCP it
+ * holds.
  *
  * @param {string} projectRoot
  * @param {string} [name]
  * @param {{ display?: "headless" | "interactive" }} [options]
- * @returns {Promise<Awaited<ReturnType<import("@evref-bl/plexus").Images["start"]>>
- *   & { mountPath?: string, projectionPort?: number, warning?: string }>}
+ * @returns {Promise<import("./answers.js").AgentStart>}
  */
 export async function startAgentImage(projectRoot, name, options = {}) {
   const images = projectImages(projectRoot);
@@ -194,34 +234,37 @@ export async function startAgentImage(projectRoot, name, options = {}) {
   // PLexus starts only an image no VM runs, so a projection recorded under
   // this name belonged to a VM that is gone.
   forgetProjection(projectRoot, resolved);
-  const olderMcp = olderMcpWarning(row);
   const availability = projectionAvailability();
+  if (!availability.available) {
+    return { ...started, row, ...("reason" in availability ? { notMounted: availability.reason } : {}) };
+  }
   const mountPath = resolveMountPath(projectRoot, readConfig(projectRoot), resolved);
   let projection;
-  if (!availability.available) {
-    projection = { reason: availability.reason };
-  } else {
+  let failure;
+  try {
+    projection = await startProjection({ name: resolved, images, endpoint: started.endpoint }, mountPath, row.diskName);
+    if (!projection) failure = "PIFS answered no projection port";
+  } catch (error) {
+    failure = `mounting its source failed: ${withoutFinalPeriod(error instanceof Error ? error.message : String(error))}`;
+  }
+  if (!projection) {
+    // Nothing says whether PIFS mounted, so stop the image rather than keep
+    // a mount nothing records: its daemon unmounts once the image is gone.
+    // Said as what happened to the image, since the call that failed is this
+    // package's, not one the agent made.
     try {
-      projection = await startProjection(
-        { name: resolved, images, endpoint: started.endpoint },
-        mountPath,
-        row.diskName,
-      );
-    } catch (error) {
-      // Nothing says whether PIFS mounted, so stop the image rather than keep
-      // a mount nothing records: its daemon unmounts once the image is gone.
-      await images.stop(resolved).catch(() => {});
-      throw error;
+      await images.stop(resolved);
+    } catch (stopError) {
+      throw new Error(`Image ${resolved} started, but ${failure}. Stopping it again failed as well: `
+        + `${withoutFinalPeriod(stopError instanceof Error ? stopError.message : String(stopError))}.`);
     }
+    throw new Error(`Image ${resolved} started, but was stopped again because ${failure}.`
+      + ` Start it with ${projectionVariable}=off to skip the mount.`);
   }
   if ("reason" in projection) {
     // The image and its tools are the point; the projection is the extra this
     // package bundles where the machine allows it.
-    return {
-      ...started,
-      warning: [projectionUnavailableWarning(resolved, projection.reason), olderMcp]
-        .filter(Boolean).join("\n"),
-    };
+    return { ...started, row, notMounted: projection.reason };
   }
   recordProjection(projectRoot, resolved, {
     mountPath,
@@ -229,64 +272,45 @@ export async function startAgentImage(projectRoot, name, options = {}) {
     pifsRelease,
     pids: started.pids,
   });
-  return {
-    ...started,
-    mountPath,
-    projectionPort: projection.port,
-    ...(olderMcp ? { warning: olderMcp } : {}),
-  };
-}
-
-/**
- * Said where an agent takes up an image, by a start from the terminal or
- * from the server: a call that names no image does not follow the image
- * just started.
- *
- * @param {string} name the image started
- * @param {string} [defaultImage] where a call naming none goes
- */
-export function callsNote(name, defaultImage) {
-  if (name === defaultImage) return undefined;
-  return defaultImage === undefined
-    ? `Pass image: "${name}" to its tools.`
-    : `Pass image: "${name}" to its tools: a call that names no image goes to ${defaultImage}, the default image.`;
+  return { ...started, row, mountPath, projectionPort: projection.port };
 }
 
 /**
  * Stop one image, the default one when none is named, or with `all`, every
  * image of this project that a PLexus start left answering. A VM started by
  * hand, or by an older PLexus, has no endpoint, and only a stop that names
- * its image reaches it.
+ * its image reaches it: `all` leaves it running, and says which it left.
  *
  * @param {string} projectRoot
  * @param {string} [name]
  * @param {{ all?: boolean }} [options]
+ * @returns {Promise<import("./answers.js").AgentStop>}
  */
 export async function stopAgentImage(projectRoot, name, options = {}) {
   if (options.all && name !== undefined) {
     throw new Error("Stopping every image takes no image name.");
   }
   const images = projectImages(projectRoot);
-  const rows = options.all
-    ? (await images.list()).filter((row) => row.endpoint)
-    : await images.list(resolveImageName(projectRoot, name));
+  const listed = options.all ? await images.list() : await images.list(resolveImageName(projectRoot, name));
+  const rows = options.all ? listed.filter((row) => row.endpoint) : listed;
   const stopped = [];
-  const warnings = [];
   for (const row of rows) {
     const projection = liveProjection(projectRoot, row);
     if (projection && row.endpoint) {
       try {
-        await callImageTool({ name: row.name, images, endpoint: row.endpoint }, "image_evaluate", {
+        const target = { name: row.name, images, endpoint: row.endpoint };
+        await callImageTool(target, evaluationTool(await listImageTools(target))?.name ?? "image_evaluate", {
           code: pifsStopCode(projection.projectionPort),
         });
       } catch (error) {
         // The stop goes on: the projection's daemon unmounts once its image
-        // is gone, so a failed unmount leaves nothing behind for long.
-        warnings.push(`PIFS did not unmount ${row.name}: ${error.message}`);
+        // is gone, so a failed unmount leaves nothing behind for long, and
+        // nothing for the answer to say. The host's log keeps it.
+        console.error(`pharo-agent: PIFS did not unmount ${row.name}: ${error.message}`);
       }
     }
     stopped.push(await images.stop(row.name));
     forgetProjection(projectRoot, row.name);
   }
-  return { stopped, ...(warnings.length > 0 ? { warning: warnings.join("\n") } : {}) };
+  return { stopped, left: options.all ? listed.filter((row) => row.running && !row.endpoint) : [] };
 }

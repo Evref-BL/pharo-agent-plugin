@@ -8,9 +8,14 @@ import fs from "node:fs";
 // The CLI's own options, which no tool argument can shadow.
 export const cliOptions = new Set(["--image", "--json", "--help"]);
 
-/** A word the CLI reads as a tool: every image tool is snake_case. */
+// The CLI's own commands, which no tool name can shadow, and pharo, the
+// prefix tool calls once took, which is refused as a command rather than
+// sent to the image as a tool.
+const cliCommands = new Set(["help", "image", "init", "list", "mcp", "pharo"]);
+
+/** A word the CLI reads as a tool: a lowercase snake_case name, or one word such as evaluate, that is no command of its own. */
 export function isToolName(word) {
-  return /^[a-z][a-z0-9]*(?:_[a-z0-9]+)+$/.test(word);
+  return /^[a-z][a-z0-9]*(?:_[a-z0-9]+)*$/.test(word) && !cliCommands.has(word);
 }
 
 function kebab(name) {
@@ -129,9 +134,12 @@ export function undeclaredFlags(words, schema) {
 /**
  * The tool arguments the words give. `schema` is the tool's input schema;
  * `readStdin` answers standard input, for a value written as `-`.
+ *
+ * @returns {Record<string, unknown>}
  */
 export function toolArguments(toolName, words, schema, readStdin = () => fs.readFileSync(0, "utf8")) {
   const properties = schema?.properties ?? {};
+  /** @type {Record<string, unknown>} */
   const flags = {};
   let stdinUsed = false;
   const valueOf = (word) => {
