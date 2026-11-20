@@ -183,8 +183,9 @@ trust an earlier answer. The first image created is the default, the main
 line. An image takes one writer: create a new one for each new subject or
 parallel agent rather than share one, named like a branch
 (\`pretty-print-formatter\`, not \`p15\`). A running image may be another
-session's. \`image stop\` kills an image without saving it, and
-\`image delete\` removes a stopped one whose subject is done.
+session's. \`image stop\` kills an image without saving it, or with
+\`--save\` has it save itself and quit, and \`image delete\` removes a stopped
+one whose subject is done.
 
 ## Tools
 

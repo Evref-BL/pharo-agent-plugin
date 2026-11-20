@@ -417,6 +417,103 @@ test("an unmount that fails still stops the image, and says so on stderr only", 
   });
 });
 
+// The image quits itself, and the daemon unmounts once it is gone: asked to
+// unmount first, an image whose save then failed would run on without its
+// source.
+test("a stop that saves leaves the source to unmount once the image has exited", async () => {
+  await inProject(async (root) => {
+    recordProjection(root, "dev", mountedDev);
+    const stopped = await stopAgentImage(root, "dev", { save: true });
+
+    assert.deepEqual(stopped, { stopped: [{ name: "dev", killed: [], saved: true }], left: [] });
+    assert.deepEqual(callsOf("callTool"), [], "nothing asked the image to unmount");
+    assert.deepEqual(callsOf("stop").map(({ name, options }) => ({ name, options })), [{ name: "dev", options: { save: true } }]);
+    assert.equal(readProjection(root, "dev"), undefined);
+    assert.equal(stopAnswer(stopped).summary, "Saved and stopped image dev.");
+  }, { images: { "proj-dev": runningImage(41000) } });
+});
+
+test("a save that fails leaves the image running with its source, in PLexus's words", async () => {
+  const refused = imageToolAnswers.texts.notSaved("dev", "it refused the connection");
+  await inProject(async (root) => {
+    recordProjection(root, "dev", mountedDev);
+    await assert.rejects(() => stopAgentImage(root, "dev", { save: true }), { code: "save-failed", message: refused });
+
+    assert.deepEqual(callsOf("callTool"), []);
+    assert.deepEqual(readProjection(root, "dev"), mountedDev);
+    assert.notEqual(readWorld().images["proj-dev"].running, undefined);
+  }, { images: { "proj-dev": runningImage(41000, { saveFails: refused }) } });
+});
+
+// PLexus says the VM has gone: the daemon unmounts its source, as after a
+// save, so the record of the mount goes too.
+test("a save whose image quits without writing its file forgets its source, in PLexus's words", async () => {
+  await inProject(async (root) => {
+    recordProjection(root, "dev", mountedDev);
+    await assert.rejects(
+      () => stopAgentImage(root, "dev", { save: true }),
+      { code: "stopped-unsaved", message: imageToolAnswers.texts.stoppedUnsaved("dev") },
+    );
+
+    assert.deepEqual(callsOf("callTool"), [], "nothing asked the image to unmount");
+    assert.equal(readWorld().images["proj-dev"].running, undefined);
+    assert.equal(readProjection(root, "dev"), undefined);
+  }, { images: { "proj-dev": runningImage(41000, { quitsUnsaved: true }) } });
+});
+
+test("stopping all with save goes on past an image that does not save, and says which", async () => {
+  const refused = imageToolAnswers.texts.notSaved("ci", "it did not answer within 60 s");
+  await inProject(async (root) => {
+    recordProjection(root, "ci", { ...mountedDev, mountPath: "/m/ci", pids: [92000] });
+    const stopped = await stopAgentImage(root, undefined, { all: true, save: true });
+
+    assert.deepEqual(stopped, {
+      stopped: [{ name: "dev", killed: [], saved: true }],
+      left: [],
+      notSaved: [refused],
+    });
+    assert.deepEqual(callsOf("stop").map((call) => call.name), ["ci", "dev"]);
+    assert.notEqual(readWorld().images["proj-ci"].running, undefined);
+    assert.notEqual(readProjection(root, "ci"), undefined, "ci still runs, mounted");
+    assert.deepEqual(stopAnswer(stopped, true), { summary: "Saved and stopped image dev.", warnings: [refused], fields: [] });
+  }, { images: { "proj-ci": runningImage(42000, { saveFails: refused }), "proj-dev": runningImage(41000) } });
+});
+
+test("stopping all with save goes on past an image that quits unsaved, and forgets only its source", async () => {
+  const refused = imageToolAnswers.texts.notSaved("dev", "it refused the connection");
+  const lost = imageToolAnswers.texts.stoppedUnsaved("ci");
+  await inProject(async (root) => {
+    recordProjection(root, "ci", { ...mountedDev, mountPath: "/m/ci", pids: [92000] });
+    recordProjection(root, "dev", mountedDev);
+    const stopped = await stopAgentImage(root, undefined, { all: true, save: true });
+
+    assert.deepEqual(stopped, {
+      stopped: [{ name: "qa", killed: [], saved: true }],
+      left: [],
+      notSaved: [lost, refused],
+    });
+    assert.deepEqual(callsOf("stop").map((call) => call.name), ["ci", "dev", "qa"]);
+    assert.equal(readProjection(root, "ci"), undefined, "ci has gone");
+    assert.deepEqual(readProjection(root, "dev"), mountedDev, "dev still runs, mounted");
+    assert.deepEqual(stopAnswer(stopped, true), { summary: "Saved and stopped image qa.", warnings: [lost, refused], fields: [] });
+  }, {
+    images: {
+      "proj-ci": runningImage(42000, { quitsUnsaved: true }),
+      "proj-dev": runningImage(41000, { saveFails: refused }),
+      "proj-qa": runningImage(43000),
+    },
+  });
+});
+
+// Only a save PLexus did not make is the stop of all's to go past: any other
+// failure is the stop's, as without save.
+test("stopping all with save ends at a failure that is not a save's", async () => {
+  await inProject(async (root) => {
+    await assert.rejects(() => stopAgentImage(root, undefined, { all: true, save: true }), { code: "stop-failed" });
+    assert.deepEqual(callsOf("stop").map((call) => call.name), ["ci"]);
+  }, { images: { "proj-ci": runningImage(42000, { stopFails: "Image ci still runs as pid 92000." }), "proj-dev": runningImage(41000) } });
+});
+
 // A VM started by hand, or by an older PLexus, has no endpoint: a sweep
 // must not kill what this project cannot even talk to.
 test("stopping all stops the project's images that have an endpoint", async () => {

@@ -8,11 +8,12 @@ import { fileURLToPath } from "node:url";
 import { listingTimeoutMs } from "../src/mcpServer.js";
 import { pifsRelease } from "../src/live.js";
 import { readConfig, writeConfig } from "../src/project.js";
-import { recordProjection } from "../src/runtime.js";
+import { readProjection, recordProjection } from "../src/runtime.js";
 import {
   callsOf,
   changeImages,
   defaultPharoMcpVersion,
+  imageToolAnswers,
   pinnedImage,
   plexusHook,
   readWorld,
@@ -907,6 +908,10 @@ test("a blank name or a display the start does not take is refused, and nothing 
       refusalOf(callTool(cwd, "image_stop", { all: "yes" })),
       "Invalid arguments for image_stop. all must be boolean, not string.",
     );
+    assert.equal(
+      refusalOf(callTool(cwd, "image_stop", { save: "yes" })),
+      "Invalid arguments for image_stop. save must be boolean, not string.",
+    );
     assert.deepEqual(callsOf("start"), []);
     assert.deepEqual(callsOf("stop"), []);
   }, { images: { "proj-dev": pinnedImage() } }, { defaultImage: "dev" });
@@ -1059,12 +1064,18 @@ test("a start that mounts the source says where, from the project", {
   }, { defaultImage: "dev" });
 });
 
+// The stop's answer said what was lost and nothing of how to keep it: an
+// agent that read it started p13 again, made its class again, and stopped it
+// the same way.
 test("a stop through the server says the tool list changed", () => {
   inProject((cwd) => {
     const answer = callTool(cwd, "image_stop", { name: "p13" });
 
     assert.equal(answer.served.status, 0, answer.served.stderr);
-    assert.equal(textOf(answer), "Stopped image p13; what it had not saved is lost. image_stop with save: true saves an image before stopping it.");
+    assert.equal(
+      textOf(answer),
+      "Stopped image p13; what it had not saved is lost. image_stop with save: true saves an image before stopping it.",
+    );
     assert.ok(answer.messages.some((message) => message.method === "notifications/tools/list_changed"));
     assert.equal(readWorld().images["proj-p13"].running, undefined);
     assert.equal(textOf(callTool(cwd, "image_stop", { name: "p13" })), "Image p13 was not running.");
@@ -1077,7 +1088,7 @@ test("a stop of all says which images it stopped and which it left running", () 
   inProject((cwd) => {
     assert.equal(
       textOf(callTool(cwd, "image_stop", { all: true })),
-      "Stopped ci and dev; what they had not saved is lost.\n"
+      "Stopped ci and dev; what they had not saved is lost. image_stop with save: true saves an image before stopping it.\n"
         + "Warning: Left legacy running: not started by this PLexus.\n"
         + "Warning: Left spike running: it is still being created.",
     );
@@ -1098,9 +1109,136 @@ test("a stop of all says which images it stopped and which it left running", () 
     },
   });
   inProject((cwd) => {
-    assert.equal(textOf(callTool(cwd, "image_stop", { all: true })), "Stopped image dev; what it had not saved is lost. image_stop with save: true saves an image before stopping it.");
+    assert.equal(
+      textOf(callTool(cwd, "image_stop", { all: true })),
+      "Stopped image dev; what it had not saved is lost. image_stop with save: true saves an image before stopping it.",
+    );
     assert.equal(textOf(callTool(cwd, "image_stop", { all: true })), "No image of this project was stopped.");
   }, { images: { "proj-dev": runningImage(41000), "proj-idle": pinnedImage() } });
+});
+
+// Every agent of the eval used image_stop as the save, and lost what it had
+// made in p13.
+test("image_stop's description says it kills without saving by default, and how to save", () => {
+  inProject((cwd) => {
+    const stop = listTools(cwd).tools.find((tool) => tool.name === "image_stop");
+    assert.equal(
+      stop.description,
+      "Stop an image and unmount its source. By default it kills the image without saving it, and the image"
+        + " starts again as it was last saved. With save: true, the image saves itself and quits instead,"
+        + " keeping its changes. Evaluating `Smalltalk saveSession` in the image saves it without stopping it.",
+    );
+    assert.deepEqual(stop.inputSchema.properties.save, {
+      type: "boolean",
+      description: "true to have the image save itself and quit; false or absent kills it without saving.",
+    });
+    assert.equal(stop.inputSchema.required, undefined, "the default image is stopped without a name");
+  });
+});
+
+test("the server's instructions say image_stop saves with save: true", () => {
+  inProject((cwd) => {
+    assert.match(
+      listTools(cwd).initialize.instructions,
+      /image_stop kills an image without\nsaving it; with save: true, the image saves itself and quits\.$/,
+    );
+  });
+});
+
+test("a stop with save has the image save itself and quit, and says so", () => {
+  inProject((cwd) => {
+    const answer = callTool(cwd, "image_stop", { name: "p13", save: true });
+
+    assert.equal(textOf(answer), "Saved and stopped image p13.");
+    assert.deepEqual(callsOf("stop").map(({ name, options }) => ({ name, options })), [{ name: "p13", options: { save: true } }]);
+    assert.ok(answer.messages.some((message) => message.method === "notifications/tools/list_changed"));
+    assert.equal(readWorld().images["proj-p13"].running, undefined);
+    assert.notEqual(readWorld().images["proj-dev"].running, undefined);
+    assert.equal(textOf(callTool(cwd, "image_stop", { save: true })), "Saved and stopped image dev.", "the default image");
+    assert.equal(textOf(callTool(cwd, "image_stop", { name: "p13", save: true })), "Image p13 was not running.");
+    assert.equal(
+      textOf(callTool(cwd, "image_stop", { name: "p13", save: false })),
+      "Image p13 was not running.",
+      "save: false is the stop without save",
+    );
+    assert.deepEqual(callsOf("stop").map(({ options }) => options), [{ save: true }, { save: true }, { save: true }, undefined]);
+  }, { images: { "proj-dev": runningImage(41000), "proj-p13": runningImage(42000) } }, { defaultImage: "dev" });
+});
+
+// PLexus leaves an image that did not save running, and says what to do:
+// the image's tools are still there, so the host is not told to list again.
+test("a save that fails is PLexus's refusal, and the image runs on with its source mounted", () => {
+  inProject((cwd) => {
+    recordProjection(cwd, "p13", { mountPath: "/m/p13", projectionPort: 60341, pifsRelease, pids: [92000] });
+    const answer = callTool(cwd, "image_stop", { name: "p13", save: true });
+
+    assert.equal(refusalOf(answer), imageToolAnswers.texts.notSaved("p13", "it refused the connection"));
+    assert.equal(answer.messages.some(listChanged), false);
+    assert.notEqual(readWorld().images["proj-p13"].running, undefined);
+    assert.deepEqual(callsOf("callTool"), [], "nothing asked the image to unmount");
+    assert.match(textOf(callTool(cwd, "image_list", {})), /^ {2}p13 state=running .* mount=\/m\/p13$/m);
+  }, {
+    images: {
+      "proj-p13": runningImage(42000, { saveFails: imageToolAnswers.texts.notSaved("p13", "it refused the connection") }),
+    },
+  });
+});
+
+// Its VM gone, the image's tools have gone with it, as after a stop.
+test("an image that quits without writing its file is PLexus's refusal, and has gone with its source", () => {
+  inProject((cwd) => {
+    recordProjection(cwd, "p13", { mountPath: "/m/p13", projectionPort: 60341, pifsRelease, pids: [92000] });
+    const answer = callTool(cwd, "image_stop", { name: "p13", save: true });
+
+    assert.equal(refusalOf(answer), imageToolAnswers.texts.stoppedUnsaved("p13"));
+    assert.ok(answer.messages.some(listChanged));
+    assert.equal(readWorld().images["proj-p13"].running, undefined);
+    assert.deepEqual(callsOf("callTool"), [], "nothing asked the image to unmount");
+    assert.equal(readProjection(cwd, "p13"), undefined, "its daemon unmounts it, as after a save");
+  }, { images: { "proj-p13": runningImage(42000, { quitsUnsaved: true }) } });
+});
+
+// A refusal before any image was stopped changed nothing a host lists.
+test("a stop with save that touches no image does not say the tool list changed", () => {
+  inProject((cwd) => {
+    for (const [args, refusal] of [
+      [{ all: true, name: "dev", save: true }, "Stopping every image takes no image name."],
+      [{ name: "nosuch", save: true }, imageToolAnswers.texts.noSuchImage("nosuch")],
+    ]) {
+      const answer = callTool(cwd, "image_stop", args);
+      assert.equal(refusalOf(answer), refusal);
+      assert.equal(answer.messages.some(listChanged), false, JSON.stringify(args));
+    }
+    assert.deepEqual(callsOf("stop"), []);
+  }, { images: { "proj-dev": runningImage(41000) } });
+});
+
+test("a stop of all with save saves each image, and names one that did not save", () => {
+  inProject((cwd) => {
+    assert.equal(textOf(callTool(cwd, "image_stop", { all: true, save: true })), "Saved and stopped ci and dev.");
+    assert.deepEqual(callsOf("stop").map(({ options }) => options), [{ save: true }, { save: true }]);
+  }, { images: { "proj-ci": runningImage(42000), "proj-dev": runningImage(41000) } });
+  const refused = imageToolAnswers.texts.notSaved("ci", "it did not answer within 60 s");
+  inProject((cwd) => {
+    assert.equal(
+      textOf(callTool(cwd, "image_stop", { all: true, save: true })),
+      `Saved and stopped image dev.\nWarning: ${refused}`,
+    );
+    assert.notEqual(readWorld().images["proj-ci"].running, undefined);
+    assert.equal(
+      textOf(callTool(cwd, "image_stop", { all: true, save: true })),
+      `No image of this project was saved.\nWarning: ${refused}`,
+    );
+  }, { images: { "proj-ci": runningImage(42000, { saveFails: refused }), "proj-dev": runningImage(41000) } });
+  inProject((cwd) => {
+    const answer = callTool(cwd, "image_stop", { all: true, save: true });
+    assert.equal(
+      textOf(answer),
+      `Saved and stopped image dev.\nWarning: ${imageToolAnswers.texts.stoppedUnsaved("ci")}`,
+    );
+    assert.ok(answer.messages.some(listChanged));
+    assert.deepEqual(callsOf("stop").map((call) => call.name), ["ci", "dev"]);
+  }, { images: { "proj-ci": runningImage(42000, { quitsUnsaved: true }), "proj-dev": runningImage(41000) } });
 });
 
 test("an image tool goes to the image its argument names, without that argument", () => {

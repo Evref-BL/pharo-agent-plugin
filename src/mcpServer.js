@@ -47,7 +47,7 @@ An image takes one writer: image_create a new one for each new subject or
 parallel agent rather than share one, named like a branch
 (pretty-print-formatter, not p15). The default image is the main line. A
 running image may be another session's. image_stop kills an image without
-saving it.`;
+saving it; with save: true, the image saves itself and quits.`;
 
 const nameProperty = {
   type: "string",
@@ -122,12 +122,20 @@ const projectTools = [
   },
   {
     name: "image_stop",
-    description: "Kill an image, without saving it, and unmount its source.",
+    description:
+      "Stop an image and unmount its source. By default it kills the image without saving it, and "
+      + "the image starts again as it was last saved. With save: true, the image saves itself and "
+      + "quits instead, keeping its changes. Evaluating `Smalltalk saveSession` in the image saves "
+      + "it without stopping it.",
     inputSchema: schema({
       name: nameProperty,
       all: {
         type: "boolean",
         description: "Stop every running image of this project instead.",
+      },
+      save: {
+        type: "boolean",
+        description: "true to have the image save itself and quit; false or absent kills it without saving.",
       },
     }),
   },
@@ -451,9 +459,18 @@ export async function serveImagesMcp(resolveProjectRoot, selectedImage, transpor
       case "image_stop": {
         // A name given with all reaches stopAgentImage, which refuses the
         // pair, rather than be dropped for the reading that stops the most.
-        const stopped = args.all
-          ? await stopAgentImage(projectRoot, args.name, { all: true })
-          : await stopAgentImage(projectRoot, named(args.name));
+        const name = args.all ? args.name : named(args.name);
+        const options = { ...(args.all ? { all: true } : {}), ...(args.save === true ? { save: true } : {}) };
+        let stopped;
+        try {
+          stopped = await stopAgentImage(projectRoot, name, options);
+        } catch (error) {
+          // An image whose VM quit without writing its file has gone all
+          // the same. A save that failed leaves its image running, and a
+          // refusal touches no image: the host has nothing to list again.
+          if (error?.code === "stopped-unsaved") await server.sendToolListChanged();
+          throw error;
+        }
         await server.sendToolListChanged();
         return stopAnswer(stopped, args.all === true);
       }

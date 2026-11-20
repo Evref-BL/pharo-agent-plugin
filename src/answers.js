@@ -22,10 +22,16 @@ const { texts } = imageToolAnswers;
  * }} AgentStart
  */
 /**
- * What a stop through this package did: PLexus's stops, and the running
- * images a stop of all of them left, which take no calls.
+ * What a stop through this package did: PLexus's stops, the running images a
+ * stop of all of them left, which take no calls, and, for each image a stop
+ * of all that saves did not save, PLexus's answer, which says whether it
+ * still runs or quit without writing its image file.
  *
- * @typedef {{ stopped: { name: string, killed: number[] }[], left: ImageInfo[] }} AgentStop
+ * @typedef {{
+ *   stopped: import("@evref-bl/plexus").StopResult[],
+ *   left: ImageInfo[],
+ *   notSaved?: string[],
+ * }} AgentStop
  */
 
 /**
@@ -157,23 +163,33 @@ export function startAnswer(projectRoot, start, defaultImage) {
 }
 
 /**
+ * Said after images stopped without saving, as PLexus says it after one.
+ */
+const saveHint = "image_stop with save: true saves an image before stopping it.";
+
+/**
  * One image stopped, as PLexus says it, or every running image of the
- * project that takes calls, with a warning for each one left running.
+ * project that takes calls, with a warning for each one left running or
+ * not saved.
  *
  * @param {AgentStop} result
  * @param {boolean} [all]
  * @returns {ToolAnswer}
  */
 export function stopAnswer(result, all = false) {
-  const { stopped, left } = result;
-  const warnings = left.map(leftRunning);
+  const { stopped, left, notSaved = [] } = result;
+  const warnings = [...notSaved, ...left.map(leftRunning)];
   if (!all || stopped.length === 1) return { ...imageToolAnswers.stopped(stopped[0]), warnings };
   if (stopped.length === 0) {
-    // Not "was running": the warnings say which images still run.
-    return { summary: "No image of this project was stopped.", warnings, fields: [] };
+    // Not "was running": the warnings say what became of each image.
+    const summary = notSaved.length === 0 ? "No image of this project was stopped." : "No image of this project was saved.";
+    return { summary, warnings, fields: [] };
   }
+  const names = texts.andList(stopped.map((each) => each.name));
   return {
-    summary: `Stopped ${texts.andList(stopped.map((each) => each.name))}; what they had not saved is lost.`,
+    summary: stopped.every((each) => each.saved)
+      ? `Saved and stopped ${names}.`
+      : `Stopped ${names}; what they had not saved is lost. ${saveHint}`,
     warnings,
     fields: [],
   };
