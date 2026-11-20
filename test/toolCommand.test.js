@@ -8,6 +8,7 @@ import {
   toolArguments,
   toolListing,
   toolUsage,
+  undeclaredFlags,
 } from "../src/toolCommand.js";
 
 const schemaOf = (name) => JSON.parse(fs.readFileSync(new URL(`./fixtures/tool-contracts/${name}.json`, import.meta.url), "utf8"));
@@ -94,6 +95,20 @@ test("a flag the tool does not have is refused with the ones it has", () => {
   );
   assert.throws(() => toolArguments("test_run", ["--timeoutSeconds", "soon"], testRun, noStdin), /takes a number/);
   assert.throws(() => toolArguments("test_run", ["--timeoutSeconds"], testRun, noStdin), /needs a value/);
+});
+
+test("the flags a tool does not declare are named as typed, and a value is never one", () => {
+  assert.deepEqual(undeclaredFlags(["--classes", "PointTest", "--timeout-seconds", "5"], testRun), []);
+  assert.deepEqual(
+    undeclaredFlags(["--class", "PointTest", "--timeout=5", "--verbose", "--packages", "--not-a-flag", "Kernel"], testRun),
+    ["class", "timeout", "verbose"],
+  );
+  // A boolean flag takes no value unless one is true or false, and --no- negates one.
+  assert.deepEqual(
+    undeclaredFlags(["--force", "--sourse", "x", "--no-force", "false", "--no-such", "--source=--fake", "--class", "--fake2"], methodCompile),
+    ["sourse", "no-such"],
+  );
+  assert.deepEqual(undeclaredFlags(["Point", "-", "--", "--include-comment"], { properties: { includeComment: { type: "boolean" } } }), []);
 });
 
 test("the answer is its text, the structured content only when there is none", () => {

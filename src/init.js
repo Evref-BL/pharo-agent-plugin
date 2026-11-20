@@ -216,11 +216,12 @@ function resolveInitProjectRoot(cwd) {
 }
 
 // The scope is pinned when init makes the config, so the project keeps its
-// images if its directory is renamed. A refresh changes only the mount root it
+// images if its directory is renamed, and the host it was made for is
+// recorded, which its traces name. A refresh changes only the mount root it
 // is given; a config without a scope takes the directory's at every call.
-function initializedConfig(projectRoot, createdConfig, mountRoot) {
+function initializedConfig(projectRoot, createdConfig, mountRoot, host) {
   if (createdConfig) {
-    return { scope: scopeFromDirectory(projectRoot), mountRoot: mountRoot ?? ".pharo-agent/mounts" };
+    return { scope: scopeFromDirectory(projectRoot), mountRoot: mountRoot ?? ".pharo-agent/mounts", host };
   }
   return mountRoot === undefined ? undefined : { ...readConfig(projectRoot), mountRoot };
 }
@@ -239,7 +240,7 @@ export function initialize({ host, mountRoot, cwd = process.cwd() }) {
   assertGeneratedGuideCanBeUpdated(pharoGuidePath);
   assertManagedBlockCanBeUpdated(path.join(projectRoot, guideName));
   const serverConfig = hostEntry.serverConfig && readServerConfig(projectRoot, hostEntry.serverConfig);
-  const config = initializedConfig(projectRoot, createdConfig, mountRoot);
+  const config = initializedConfig(projectRoot, createdConfig, mountRoot, hostEntry.id);
   if (config) writeConfig(projectRoot, config);
   ensureLines(path.join(directory, ".gitignore"), ignoredPaths);
   fs.writeFileSync(pharoGuidePath, pharoGuide());
