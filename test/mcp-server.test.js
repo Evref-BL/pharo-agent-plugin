@@ -761,14 +761,140 @@ test("image_templates names each template under its category", () => {
   });
 });
 
-test("a call that names no image goes to the default image while others run", () => {
+// An agent that had started p13 wrote into the default image with calls that
+// named none, and read its answer, "'Pharo14.0.0SNAPSHOT'", as p13's.
+test("a call that names no image goes to the default image while others run, and its answer says so", () => {
   inProject((cwd) => {
-    const { served, result } = callTool(cwd, "class_get", { name: "Point" });
-
-    assert.equal(served.status, 0, served.stderr);
-    assert.deepEqual(result.content, [{ type: "text", text: "nil" }]);
+    assert.deepEqual(callTool(cwd, "evaluate", { code: "EvalProbe new version" }).result, {
+      content: [
+        { type: "text", text: "'Pharo14.0.0SNAPSHOT'" },
+        { type: "text", text: 'No image was named, so the call went to dev, the default image. p13 runs too: pass image: "p13" to call it.' },
+      ],
+    });
     assert.deepEqual(callsOf("callTool").map((call) => call.url), ["http://127.0.0.1:41000/"]);
-  }, { images: { "proj-dev": runningImage(41000), "proj-p13": runningImage(42000) } }, { defaultImage: "dev" });
+    assert.equal(textOf(callTool(cwd, "evaluate", { image: "dev", code: "EvalProbe new version" })), "'Pharo14.0.0SNAPSHOT'");
+    assert.equal(textOf(callTool(cwd, "evaluate", { image: "p13", code: "EvalProbe new version" })), "nil");
+  }, {
+    images: {
+      "proj-dev": runningImage(41000, {
+        answers: [{ tool: "evaluate", result: { content: [{ type: "text", text: "'Pharo14.0.0SNAPSHOT'" }] } }],
+      }),
+      "proj-p13": runningImage(42000),
+    },
+  }, { defaultImage: "dev" });
+});
+
+// The image's refusal is its answer too, and as easily read as another's.
+test("a refusal by the default image to a call that names none says which image refused", () => {
+  inProject((cwd) => {
+    assert.deepEqual(callTool(cwd, "method_compile", { class: "EvalProbe", source: "version ^ 1" }).result, {
+      content: [
+        { type: "text", text: "Class EvalProbe does not exist." },
+        {
+          type: "text",
+          text: "No image was named, so the call went to dev, the default image."
+            + ' ci and p13 run too: pass image: "ci" or image: "p13" to call one.',
+        },
+      ],
+      isError: true,
+    });
+  }, {
+    images: {
+      "proj-dev": runningImage(41000, {
+        answers: [{ tool: "method_compile", result: { content: [{ type: "text", text: "Class EvalProbe does not exist." }], isError: true } }],
+      }),
+      "proj-ci": runningImage(42000),
+      "proj-p13": runningImage(43000),
+      "proj-idle": pinnedImage(),
+    },
+  }, { defaultImage: "dev" });
+});
+
+// The image's texts stay as it wrote them: a method's source an agent copies
+// into a file carries no note.
+test("which image answered is a text of its own after the image's answer", () => {
+  inProject((cwd) => {
+    const note = 'No image was named, so the call went to dev, the default image. p13 runs too: pass image: "p13" to call it.';
+    assert.deepEqual(callTool(cwd, "method_get", { class: "Point", selector: "x" }).result.content, [
+      { type: "text", text: "Got method Point>>x." },
+      { type: "image", data: "AA==", mimeType: "image/png" },
+      { type: "text", text: "source: x ^ x\n" },
+      { type: "text", text: note },
+    ]);
+    assert.deepEqual(callTool(cwd, "screenshot", {}).result.content, [
+      { type: "image", data: "AA==", mimeType: "image/png" },
+      { type: "text", text: note },
+    ]);
+  }, {
+    images: {
+      "proj-dev": runningImage(41000, {
+        answers: [
+          { tool: "method_get", result: { content: [
+            { type: "text", text: "Got method Point>>x." },
+            { type: "image", data: "AA==", mimeType: "image/png" },
+            { type: "text", text: "source: x ^ x\n" },
+          ] } },
+          { tool: "screenshot", result: { content: [{ type: "image", data: "AA==", mimeType: "image/png" }] } },
+        ],
+      }),
+      "proj-p13": runningImage(42000),
+    },
+  }, { defaultImage: "dev" });
+});
+
+// An image set to useStructuredContentOnlyToolResponses sends no text: a
+// host that shows its structured content only where no text comes with it
+// would show the note in its place.
+test("an answer in structured content alone stays the image's, while others run", () => {
+  inProject((cwd) => {
+    assert.deepEqual(callTool(cwd, "class_search", { query: "Point" }).result, {
+      content: [],
+      structuredContent: { summary: "1 class matches in the image.", data: { classes: ["Point"] } },
+    });
+  }, {
+    images: {
+      "proj-dev": runningImage(41000, {
+        answers: [{
+          tool: "class_search",
+          result: { structuredContent: { summary: "1 class matches in the image.", data: { classes: ["Point"] } } },
+        }],
+      }),
+      "proj-p13": runningImage(42000),
+    },
+  }, { defaultImage: "dev" });
+});
+
+test("a call that names no image, with no other image running, is the image's answer alone", () => {
+  inProject((cwd) => {
+    assert.equal(textOf(callTool(cwd, "class_get", { name: "Point" })), "nil");
+  }, { images: { "proj-dev": runningImage(41000), "proj-p13": pinnedImage() } }, { defaultImage: "dev" });
+});
+
+test("with --image, a call that names no image says it went to that image while others run", () => {
+  inProject((cwd) => {
+    const answer = serve({
+      cwd,
+      args: ["--image", "ci"],
+      request: { method: "tools/call", params: { name: "class_get", arguments: { name: "Point" } } },
+    });
+
+    assert.deepEqual(answer.result.content, [
+      { type: "text", text: "nil" },
+      {
+        type: "text",
+        text: "No image was named, so the call went to ci, the default image."
+          + ' dev, p13, and qa run too: pass image: "dev", image: "p13", or image: "qa" to call one.',
+      },
+    ]);
+    assert.deepEqual(callsOf("callTool").map((call) => call.url), ["http://127.0.0.1:42000/"]);
+  }, {
+    images: {
+      "proj-ci": runningImage(42000),
+      "proj-dev": runningImage(41000),
+      "proj-p13": runningImage(43000),
+      "proj-qa": runningImage(44000),
+    },
+  }, { defaultImage: "dev" });
 });
 
 test("a call that names no image, while the default is stopped, names the running ones", () => {
