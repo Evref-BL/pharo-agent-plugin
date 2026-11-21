@@ -13,13 +13,16 @@ export const { version } = createRequire(import.meta.url)("../package.json");
  *   name: string,
  *   images: import("@evref-bl/plexus").Images,
  *   endpoint: import("@evref-bl/plexus").Endpoint,
+ *   alsoRunning?: string[],
  * }} Target
  */
 
 /**
  * The image a call goes to, the one named or the default, and where it
  * answers. Asked for every call rather than kept: the image may have exited,
- * or been started again on another port, since the last one.
+ * or been started again on another port, since the last one. For a call
+ * that names none, `alsoRunning` is the project's other images that take
+ * calls, which its caller may have meant.
  *
  * @param {string} projectRoot
  * @param {string} [name]
@@ -34,8 +37,8 @@ export async function imageTarget(projectRoot, name, options = {}) {
   const defaultImage = options.defaultImage ?? resolveImageName(projectRoot, undefined);
   const rows = await images.list();
   const own = rows.find((row) => row.name === defaultImage);
-  if (own?.endpoint) return { name: defaultImage, images, endpoint: own.endpoint };
-  const others = rows.filter((row) => row.endpoint).map((row) => row.name);
+  const others = rows.filter((row) => row.endpoint && row.name !== defaultImage).map((row) => row.name);
+  if (own?.endpoint) return { name: defaultImage, images, endpoint: own.endpoint, alsoRunning: others };
   const running = others.length > 0 ? ` Running now: ${others.join(", ")}.` : "";
   const naming = others.length > 0 ? ["name one with image"] : [];
   if (own === undefined) {
@@ -57,7 +60,7 @@ export async function imageTarget(projectRoot, name, options = {}) {
         + `${sentence(oneOf([...naming, `start ${defaultImage} with image_start`]))}`,
     );
   }
-  return namedTarget(images, defaultImage);
+  return { ...(await namedTarget(images, defaultImage)), alsoRunning: others };
 }
 
 /**
