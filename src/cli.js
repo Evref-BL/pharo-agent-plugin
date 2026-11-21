@@ -1,3 +1,17 @@
+import { imageToolAnswers } from "@evref-bl/plexus";
+import {
+  callFailedText,
+  callsNote,
+  createAnswer,
+  defaultChosen,
+  deleteAnswer,
+  listAnswer,
+  startAnswer,
+  startJson,
+  stopAnswer,
+  stopJson,
+  templatesAnswer,
+} from "./answers.js";
 import { hostChoices, hostList } from "./hosts.js";
 import { usage } from "./help.js";
 import { initialize } from "./init.js";
@@ -10,7 +24,7 @@ import {
 } from "./images.js";
 import { callImageTool, imageTarget, listImageTools, toolContract } from "./gateway.js";
 import { serveImagesMcp } from "./mcpServer.js";
-import { callsNote, startAgentImage, stopAgentImage } from "./live.js";
+import { startAgentImage, stopAgentImage } from "./live.js";
 import { findProjectRoot, readConfig } from "./project.js";
 import { recordArgumentNames, recordUnknownArgumentNames, runCommand } from "./telemetry.js";
 import {
@@ -180,16 +194,25 @@ async function runTool([toolName, ...words]) {
     return 0;
   }
   const target = await imageTarget(findProjectRoot(), image);
-  let argumentsValue = {};
-  if (help.rest.length > 0) {
-    const { inputSchema } = await toolContract(target, toolName);
+  const contract = help.rest.length === 0 ? undefined : await toolContract(target, toolName);
+  if (contract) {
     // Refused here, such a call never reaches the image, whose span would
     // otherwise say which names the caller expected.
-    recordUnknownArgumentNames(undeclaredFlags(help.rest, inputSchema));
-    argumentsValue = toolArguments(toolName, help.rest, inputSchema);
+    recordUnknownArgumentNames(undeclaredFlags(help.rest, contract.inputSchema));
   }
+  const argumentsValue = contract ? toolArguments(toolName, help.rest, contract.inputSchema) : {};
   recordArgumentNames(argumentsValue);
-  const result = await callImageTool(target, toolName, argumentsValue);
+  let result;
+  try {
+    // The schema read for the arguments also gives the time limit the image
+    // keeps for the call, which the wait outlasts.
+    result = await callImageTool(target, toolName, argumentsValue, contract?.inputSchema ? { inputSchema: contract.inputSchema } : {});
+  } catch (error) {
+    // Said on stderr, with exit 1: what the failure did to the image.
+    const failed = await callFailedText(target, toolName, error);
+    if (failed === undefined) throw error;
+    throw new Error(failed);
+  }
   console.log(json.present ? JSON.stringify(result, null, 2) : resultText(result));
   return exitCodeForToolResult(result);
 }
@@ -202,36 +225,70 @@ async function listTools(words) {
   console.log(json.present ? JSON.stringify(tools, null, 2) : toolListing(tools));
 }
 
+/**
+ * What an image command did: the text its MCP tool answers, for a reader,
+ * and the object it printed before the answers were text, for a script.
+ *
+ * @typedef {{ text: string, json: Record<string, unknown> }} ImageCommandAnswer
+ */
+
+/**
+ * @param {import("@evref-bl/plexus").ToolAnswer} answer
+ * @param {Record<string, unknown>} json
+ * @returns {ImageCommandAnswer}
+ */
+function answered(answer, json) {
+  return { text: imageToolAnswers.render(answer), json };
+}
+
+/**
+ * @param {string} projectRoot
+ * @param {string | undefined} subcommand
+ * @param {string[]} args
+ * @returns {Promise<ImageCommandAnswer>}
+ */
 async function runImageCommand(projectRoot, subcommand, args) {
   if (subcommand === "templates") {
     requireNoArguments("image templates", args);
-    return listImageTemplates(projectRoot);
+    const listed = await listImageTemplates(projectRoot);
+    return answered(templatesAnswer(listed), listed);
   }
   if (subcommand === "create") {
     const { name, options } = parseImageCreate(args);
-    return createImage(projectRoot, name, options);
+    const created = await createImage(projectRoot, name, options);
+    return answered(createAnswer(created), created);
   }
   if (subcommand === "list") {
     requireNoArguments("image list", args);
-    return listImages(projectRoot);
+    const listed = await listImages(projectRoot);
+    return answered(listAnswer(projectRoot, listed, false), listed);
   }
   if (subcommand === "start") {
     const { name, options } = parseImageStart(args);
-    const started = await startAgentImage(projectRoot, name, options);
-    const { defaultImage } = readConfig(projectRoot);
-    const note = callsNote(started.name, typeof defaultImage === "string" ? defaultImage : undefined);
-    return { ...started, ...(note ? { note } : {}) };
+    const start = await startAgentImage(projectRoot, name, options);
+    const configured = readConfig(projectRoot).defaultImage;
+    const defaultImage = typeof configured === "string" ? configured : undefined;
+    const answer = startAnswer(projectRoot, start, defaultImage);
+    const note = callsNote(start.name, defaultImage);
+    return answered(answer, { ...startJson(start, answer), ...(note ? { note } : {}) });
   }
   if (subcommand === "stop") {
     const { name, all } = parseImageStop(args);
-    return stopAgentImage(projectRoot, name, { all });
+    const stopped = await stopAgentImage(projectRoot, name, { all });
+    const answer = stopAnswer(stopped, all);
+    return answered(answer, stopJson(stopped, answer));
   }
   if (subcommand === "use" || subcommand === "delete") {
     const [name, ...extra] = args;
     if (!name || name.startsWith("--") || extra.length > 0) {
       throw new Error(`image ${subcommand} requires one image name`);
     }
-    return subcommand === "use" ? useImage(projectRoot, name) : deleteImage(projectRoot, name);
+    if (subcommand === "use") {
+      const chosen = await useImage(projectRoot, name);
+      return { text: defaultChosen(name), json: chosen };
+    }
+    const deleted = await deleteImage(projectRoot, name);
+    return answered(deleteAnswer(deleted), deleted);
   }
   throw new Error(`Unsupported image command: ${subcommand ?? ""}\n${usage(["image"])}`);
 }
@@ -300,9 +357,13 @@ async function run(args) {
     return;
   }
   if (command === "image") {
-    const [subcommand, ...imageArgs] = rest;
+    // The text the image tools answer, or with --json, anywhere among the
+    // command's arguments, the JSON a script parsed before the answers were
+    // text.
+    const json = takeFlag(rest, "--json");
+    const [subcommand, ...imageArgs] = json.rest;
     const answer = await runImageCommand(findProjectRoot(), subcommand, imageArgs);
-    console.log(JSON.stringify({ ok: true, ...answer }, null, 2));
+    console.log(json.present ? JSON.stringify({ ok: true, ...answer.json }, null, 2) : answer.text);
     return;
   }
   throw new Error(`Unsupported command: ${command}\n${usage()}`);

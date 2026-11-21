@@ -306,6 +306,21 @@ test("the Pharo guide creates images and names no declaration file", () => {
   }
 });
 
+// A start's answer gives the mount, from the project, or none: the mount
+// root is the config's to choose, and a platform or a setting may mount
+// nothing.
+test("the Pharo guide says a start mounts the source and says where", () => {
+  const root = temporaryProject();
+  try {
+    initialize({ host: "claude", cwd: root });
+    const guide = fs.readFileSync(path.join(root, "pharo.AGENTS.md"), "utf8");
+
+    assert.match(guide, /On macOS and Linux,\s+`image start` also mounts the source as files, and says where\./);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
 const { version } = JSON.parse(fs.readFileSync(new URL("../package.json", import.meta.url), "utf8"));
 const pharoServer = {
   type: "local",

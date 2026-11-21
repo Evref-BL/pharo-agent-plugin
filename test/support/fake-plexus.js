@@ -7,9 +7,16 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { context, propagation } from "@opentelemetry/api";
-import { defaultPharoMcpVersion } from "@evref-bl/plexus";
+import { defaultPharoMcpVersion, imageToolAnswers } from "@evref-bl/plexus";
 
-export { defaultPharoMcpVersion };
+// The release's own values and words: a test reads what the pinned PLexus
+// says, and the fake refuses in the library's words.
+export { defaultPharoMcpVersion, imageToolAnswers };
+
+const { texts } = imageToolAnswers;
+
+/** The endpoint problem of an image a start of PLexus launched, whose server has not answered yet. */
+export const noEndpointYet = "no endpoint written yet";
 
 /** The module to --import into a spawned pharo-agent, so it gets this fake too. */
 export const plexusHook = new URL("./plexus-hook.js", import.meta.url).href;
@@ -24,7 +31,18 @@ const scopePattern = /^[A-Za-z0-9][A-Za-z0-9._]{0,63}$/;
  *   contains?: string,
  *   result?: unknown,
  *   error?: string,
+ *   kind?: "answered" | "no-handshake" | "timeout" | "refused" | "closed" | "other",
+ *   rpcCode?: number,
+ *   waitedMs?: number,
+ *   stops?: boolean,
+ *   hangs?: boolean,
  * }} Answer
+ *
+ * An answer with an `error` rejects the call as PLexus's `callTool` does,
+ * with the error's `kind`, and its `rpcCode` or `waitedMs` where it has one.
+ * One that `stops` the image leaves it with no VM, as a VM that exits. One
+ * that `hangs` answers nothing until its caller's signal aborts, and then
+ * rejects as cancelled, as PLexus's does, recording `callCancelled`.
  *
  * @typedef {{
  *   template?: string,
@@ -35,6 +53,7 @@ const scopePattern = /^[A-Za-z0-9][A-Za-z0-9._]{0,63}$/;
  *   building?: boolean,
  *   running?: { pids: number[], display?: string, endpoint?: { url: string, pid?: number }, endpointProblem?: string },
  *   startFails?: string,
+ *   stopFails?: string,
  *   unreachable?: boolean,
  *   hangs?: boolean,
  *   busy?: boolean,
@@ -164,15 +183,22 @@ function row(world, scope, diskName) {
     pids: running?.pids ?? [],
     ...(running ? { display: running.display ?? "headless" } : {}),
     ...(running?.endpoint ? { endpoint: running.endpoint } : {}),
-    ...(running && !running.endpoint
-      ? { endpointProblem: running.endpointProblem ?? "not started by this PLexus" }
-      : {}),
+    ...(running && !running.endpoint ? { endpointProblem: endpointProblem(running) } : {}),
     ...(image.building ? { building: true } : {}),
     ...(image.template ? { template: image.template } : {}),
     ...(image.pharoVersion ? { pharoVersion: image.pharoVersion } : {}),
     ...(image.mcp ? { mcp: image.mcp } : {}),
     ...(image.everyStart ? { everyStart: image.everyStart } : {}),
   };
+}
+
+/**
+ * Why a running image takes no calls, or nothing when it does.
+ *
+ * @param {NonNullable<FakeImage["running"]>} running
+ */
+function endpointProblem(running) {
+  return running.endpoint ? undefined : running.endpointProblem ?? "not started by this PLexus";
 }
 
 export class Images {
@@ -209,7 +235,7 @@ export class Images {
   existing(world, name) {
     const diskName = this.diskName(name);
     if (!world.images[diskName]) {
-      throw new PlexusError("no-such-image", `No image ${name}.`);
+      throw new PlexusError("no-such-image", texts.noSuchImage(name));
     }
     return diskName;
   }
@@ -245,7 +271,7 @@ export class Images {
     writeWorld(world);
     const diskName = this.diskName(name);
     if (world.images[diskName]) {
-      throw new PlexusError("image-exists", `Image ${name} exists.`);
+      throw new PlexusError("image-exists", texts.imageExists(name));
     }
     if (options.everyStart && !options.script) {
       throw new PlexusError("script-not-found", "everyStart needs a script");
@@ -256,7 +282,7 @@ export class Images {
     const offering = world.templates.filter((template) => template.name === options.template
       && (options.category === undefined || template.category === options.category));
     if (offering.length === 0) {
-      throw new PlexusError("unknown-template", `No template ${options.template}.`);
+      throw new PlexusError("unknown-template", texts.unknownTemplate(options.template));
     }
     if (offering.length > 1) {
       throw new PlexusError(
@@ -284,12 +310,16 @@ export class Images {
     writeWorld(world);
     const diskName = this.existing(world, name);
     const image = world.images[diskName];
-    if (image.building) throw new PlexusError("building", `Image ${name} is still being created.`);
+    if (image.building) throw new PlexusError("building", texts.stillBuilding(name));
     if (image.running) {
+      const { pids } = image.running;
+      const problem = endpointProblem(image.running);
       throw new PlexusError(
         "image-running",
-        `Image ${name} is already running as pid ${image.running.pids.join(", ")}.`,
-        { pids: image.running.pids },
+        problem === undefined ? texts.alreadyRunning(name)
+          : problem === noEndpointYet ? texts.starting(name, pids)
+          : texts.takesNoCalls(name, pids, problem),
+        { pids },
       );
     }
     if (image.startFails) throw new PlexusError("start-failed", image.startFails);
@@ -307,6 +337,8 @@ export class Images {
     const world = this.record("stop", { name });
     writeWorld(world);
     const diskName = this.existing(world, name);
+    const { stopFails } = world.images[diskName];
+    if (stopFails) throw new PlexusError("stop-failed", stopFails);
     const killed = world.images[diskName].running?.pids ?? [];
     delete world.images[diskName].running;
     writeWorld(world);
@@ -318,24 +350,35 @@ export class Images {
     const world = this.record("delete", { name });
     writeWorld(world);
     const diskName = this.existing(world, name);
-    if (world.images[diskName].running) {
-      throw new PlexusError("image-running", `Image ${name} is running.`);
+    const { running } = world.images[diskName];
+    if (running) {
+      throw new PlexusError("image-running", texts.deleteRunning(name, running.pids), { pids: running.pids });
     }
     delete world.images[diskName];
     writeWorld(world);
     return { name };
   }
 
-  /** @param {string} name */
+  /**
+   * As PLexus's `endpointOf` answers it: a create first, whatever runs the
+   * image, then no VM, then why a VM takes no calls.
+   *
+   * @param {string} name
+   */
   async endpoint(name) {
     const world = this.record("endpoint", { name });
     writeWorld(world);
     const image = world.images[this.existing(world, name)];
-    if (!image.running) throw new PlexusError("not-running", `Image ${name} is not running.`);
-    if (!image.running.endpoint) {
-      throw new PlexusError("no-endpoint", `Image ${name} runs without an endpoint: ${image.running.endpointProblem}.`);
-    }
-    return image.running.endpoint;
+    if (image.building) throw new PlexusError("building", texts.stillBuilding(name));
+    if (!image.running) throw new PlexusError("not-running", texts.notRunning(name));
+    const { pids } = image.running;
+    const problem = endpointProblem(image.running);
+    if (problem === undefined) return /** @type {{ url: string, pid?: number }} */ (image.running.endpoint);
+    throw new PlexusError(
+      "no-endpoint",
+      problem === noEndpointYet ? texts.starting(name, pids) : texts.takesNoCalls(name, pids, problem),
+      { pids },
+    );
   }
 }
 
@@ -419,26 +462,52 @@ async function listing(world, endpoint, timeoutMs) {
 }
 
 /**
- * The trace context PLexus would pass on in the request's `_meta` is
- * recorded with the call, when there is one.
+ * A call, recorded with what its caller asked of the wait: the options as
+ * given, a signal said by whether there was one. The trace context PLexus
+ * would pass on in the request's `_meta` is recorded with it, when there is
+ * one.
  *
  * @param {{ url: string }} endpoint
  * @param {string} name
  * @param {Record<string, unknown>} [args]
+ * @param {{ inputSchema?: unknown, minimumMs?: number, timeoutMs?: number, signal?: AbortSignal }} [options]
  */
-export async function callTool(endpoint, name, args = {}) {
+export async function callTool(endpoint, name, args = {}, options = {}) {
   const world = readWorld();
+  const { signal, ...waits } = options;
   /** @type {Record<string, string>} */
   const meta = {};
   propagation.inject(context.active(), meta);
   world.calls.push({
-    op: "callTool", url: endpoint.url, tool: name, arguments: args,
+    op: "callTool",
+    url: endpoint.url,
+    tool: name,
+    arguments: args,
+    options: { ...waits, ...(signal ? { signal: true } : {}) },
     ...(meta.traceparent ? { traceparent: meta.traceparent } : {}),
   });
   writeWorld(world);
-  const [, image] = answering(world, endpoint);
+  const [diskName, image] = answering(world, endpoint);
   const answer = (image.answers ?? []).find((each) => each.tool === name
     && (each.contains === undefined || JSON.stringify(args).includes(each.contains)));
-  if (answer?.error) throw new Error(answer.error);
+  if (answer?.hangs) {
+    await new Promise((resolve) => {
+      if (signal?.aborted) resolve(undefined);
+      else signal?.addEventListener("abort", resolve, { once: true });
+    });
+    const cancelled = readWorld();
+    cancelled.calls.push({ op: "callCancelled", url: endpoint.url, tool: name });
+    writeWorld(cancelled);
+    throw Object.assign(new Error("MCP request cancelled"), { kind: "cancelled" });
+  }
+  if (answer?.stops) changeImages({ [diskName]: { running: undefined } });
+  if (answer?.error) {
+    const { kind, rpcCode, waitedMs } = answer;
+    throw Object.assign(new Error(answer.error), {
+      ...(kind ? { kind } : {}),
+      ...(rpcCode === undefined ? {} : { rpcCode }),
+      ...(waitedMs === undefined ? {} : { waitedMs }),
+    });
+  }
   return answer?.result ?? { content: [{ type: "text", text: "nil" }] };
 }

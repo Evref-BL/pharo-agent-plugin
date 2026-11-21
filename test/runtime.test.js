@@ -3,11 +3,11 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { toolFailureMessage, toolResult, withImageSelector } from "../src/gateway.js";
+import { callMinimumMs, withImageSelector } from "../src/gateway.js";
+import { noSourceMounted } from "../src/answers.js";
 import {
   projectionAvailability,
   projectionStartOutcome,
-  projectionUnavailableWarning,
   pifsRelease,
   pifsSelectors,
   pifsStartCode,
@@ -23,6 +23,32 @@ import {
   recordProjection,
   smalltalkString,
 } from "../src/runtime.js";
+
+// A forwarded call never waits less than PLexus's minute, which it waited
+// before the variable.
+test("PHARO_AGENT_CALL_SECONDS raises the least a call waits, and never lowers it", () => {
+  assert.equal(callMinimumMs({}), 60_000);
+  assert.equal(callMinimumMs({ PHARO_AGENT_CALL_SECONDS: "" }), 60_000);
+  assert.equal(callMinimumMs({ PHARO_AGENT_CALL_SECONDS: "300" }), 300_000);
+  assert.equal(callMinimumMs({ PHARO_AGENT_CALL_SECONDS: "30" }), 60_000);
+  assert.equal(callMinimumMs({ PHARO_AGENT_CALL_SECONDS: "0" }), 60_000);
+});
+
+test("a PHARO_AGENT_CALL_SECONDS that is not a whole number is ignored, and said once", () => {
+  const error = console.error;
+  /** @type {string[]} */
+  const said = [];
+  console.error = (text) => { said.push(String(text)); };
+  try {
+    assert.equal(callMinimumMs({ PHARO_AGENT_CALL_SECONDS: "2m" }), 60_000);
+    assert.equal(callMinimumMs({ PHARO_AGENT_CALL_SECONDS: "90.5" }), 60_000);
+  } finally {
+    console.error = error;
+  }
+  assert.deepEqual(said, [
+    'pharo-agent: PHARO_AGENT_CALL_SECONDS takes a whole number of seconds, not "2m"; waiting at least 60 s.',
+  ]);
+});
 
 test("escapes project-controlled values for PIFS evaluation", () => {
   assert.equal(smalltalkString("O'Reilly"), "'O''Reilly'");
@@ -159,25 +185,6 @@ test("a record holds only while a VM it was made with runs the image", () => {
   }
 });
 
-test("a tool the image says it does not have names an image made with another pin", () => {
-  const old = { name: "p13", mcp: /** @type {const} */ ({ source: "pin", version: "0.0.1" }) };
-  const message = toolFailureMessage("MCP error -32601: The method does not exist / is not available.", old);
-
-  assert.match(message, /-32601/);
-  assert.match(message, /Image p13 holds Pharo MCP 0\.0\.1/);
-  assert.equal(toolFailureMessage("ZeroDivide", old), "ZeroDivide");
-  assert.equal(toolFailureMessage("MCP error -32601: nope.", undefined), "MCP error -32601: nope.");
-});
-
-test("an image tool result that is already an MCP result is passed through", () => {
-  const imageResult = { content: [{ type: "text", text: "42" }], isError: false };
-  assert.equal(toolResult(imageResult), imageResult);
-
-  const plain = toolResult({ resultPrintString: "42" });
-  assert.equal(plain.content[0].type, "text");
-  assert.match(plain.content[0].text, /resultPrintString/);
-});
-
 test("reads the evaluation result out of an MCP text content part", () => {
   const envelope = {
     content: [
@@ -212,35 +219,34 @@ test("a source projection is asked for wherever PIFS has a daemon", () => {
     assert.deepEqual(projectionAvailability({ env: {}, platform }), { available: true }, platform);
   }
 
-  const onWindows = projectionAvailability({ env: {}, platform: "win32" });
-  assert.equal(onWindows.available, false);
-  assert.ok(onWindows.reason);
-  assert.match(onWindows.reason, /macOS and Linux/);
-  assert.match(onWindows.reason, /win32/);
+  // Nothing to warn of: a start's answer without a mount says there is none.
+  assert.deepEqual(projectionAvailability({ env: {}, platform: "win32" }), { available: false, chosen: true });
 });
 
 // A machine that could mount may still be one that must not, such as a
 // developer's Mac running an eval harness's agents. The variable answers
 // before the platform is asked.
-test("PHARO_AGENT_PROJECTION=off turns the projection off where it could be mounted", () => {
-  const off = projectionAvailability({ env: { PHARO_AGENT_PROJECTION: "off" }, platform: "darwin" });
-  assert.equal(off.available, false);
-  assert.ok(off.reason);
-  assert.match(off.reason, /PHARO_AGENT_PROJECTION=off/);
-
-  const offOnLinux = projectionAvailability({ env: { PHARO_AGENT_PROJECTION: "off" }, platform: "linux" });
-  assert.equal(offOnLinux.reason, off.reason);
+test("PHARO_AGENT_PROJECTION=off turns the projection off where it could be mounted, as chosen", () => {
+  for (const platform of ["darwin", "linux"]) {
+    assert.deepEqual(
+      projectionAvailability({ env: { PHARO_AGENT_PROJECTION: "off" }, platform }),
+      { available: false, chosen: true },
+      platform,
+    );
+  }
 });
 
 // An opt-out that ignored a value it does not take would mount on the very
 // machine that asked not to be mounted on.
 test("a PHARO_AGENT_PROJECTION other than off turns the projection off too, and says why", () => {
   for (const value of ["0", "false", "OFF", "on"]) {
-    const answer = projectionAvailability({ env: { PHARO_AGENT_PROJECTION: value }, platform: "darwin" });
-    assert.equal(answer.available, false, value);
-    assert.ok(answer.reason);
-    assert.match(answer.reason, /PHARO_AGENT_PROJECTION takes only off/);
-    assert.ok(answer.reason.includes(JSON.stringify(value)), answer.reason);
+    for (const platform of ["darwin", "win32"]) {
+      assert.deepEqual(projectionAvailability({ env: { PHARO_AGENT_PROJECTION: value }, platform }), {
+        available: false,
+        reason: `PHARO_AGENT_PROJECTION takes only off, and is ${JSON.stringify(value)}.`
+          + " Unset it to mount sources where the platform allows.",
+      }, `${value} on ${platform}`);
+    }
   }
 });
 
@@ -250,13 +256,15 @@ test("an unset or empty PHARO_AGENT_PROJECTION leaves the platform to decide", (
   }
 });
 
-test("a missing projection says the image and its tools are still there", () => {
-  const unavailable = projectionAvailability({ env: {}, platform: "win32" });
-  assert.ok(unavailable.reason);
-  const warning = projectionUnavailableWarning("dev", unavailable.reason);
+test("a start that mounted no source says so, and that its tools still read and edit its code", () => {
+  const unavailable = projectionAvailability({ env: { PHARO_AGENT_PROJECTION: "0" }, platform: "darwin" });
+  assert.ok("reason" in unavailable);
 
-  assert.match(warning, /Image dev is running with its Pharo tools/);
-  assert.match(warning, /no source projection/);
+  assert.equal(
+    noSourceMounted(unavailable.reason),
+    'No source is mounted: PHARO_AGENT_PROJECTION takes only off, and is "0". Unset it to mount sources'
+      + " where the platform allows. Read and edit its code through its tools.",
+  );
 });
 
 // A mount that fails is not an evaluation that fails: the start code answers

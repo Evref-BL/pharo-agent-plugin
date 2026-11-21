@@ -154,7 +154,7 @@ test("a tool's error answer and a refused call fail their span, with a type and 
   try {
     const answered = await client.callTool({ name: "class_get", arguments: { name: "Broken" }, _meta: { traceparent } });
     assert.equal(answered.isError, true);
-    // image_create needs a name and a template: the server throws.
+    // image_create needs a name and a template: the server refuses it.
     const refused = await client.callTool({ name: "image_create", arguments: { template: "secret source" } })
       .then((value) => ({ value }), (error) => ({ error }));
     assert.ok("error" in refused || refused.value.isError === true);
@@ -167,7 +167,7 @@ test("a tool's error answer and a refused call fail their span, with a type and 
   assertNoValues(answered);
   assert.equal(refused.name, "tools/call image_create");
   assert.deepEqual(refused.attributes["pharo_agent.argument.names"], ["template"]);
-  assert.equal(refused.attributes["error.type"], "Error");
+  assert.equal(refused.attributes["error.type"], "tool_error");
   assert.equal(refused.status.code, SpanStatusCode.ERROR);
   assertNoValues(refused);
 }));

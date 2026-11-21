@@ -1,6 +1,6 @@
 import { createRequire } from "node:module";
 import { PlexusError, callTool, listTools } from "@evref-bl/plexus";
-import { olderMcpWarning, projectImages } from "./images.js";
+import { projectImages } from "./images.js";
 import { toolContractFrom } from "./mcpYaml.js";
 import { resolveImageName } from "./project.js";
 
@@ -94,45 +94,68 @@ function sentence(clause) {
 }
 
 /**
+ * Where the image answers, or PLexus's refusal, which says why it does not
+ * and what to do: not running, starting, or running without taking calls.
+ *
  * @param {import("@evref-bl/plexus").Images} images
  * @param {string} name
  * @returns {Promise<Target>}
  */
 async function namedTarget(images, name) {
-  try {
-    return { name, images, endpoint: await images.endpoint(name) };
-  } catch (error) {
-    // PLexus states the fact in its own words; starting it is this
-    // package's to say. A VM that exited takes what was not saved with it.
-    if (/** @type {{ code?: unknown }} */ (error)?.code !== "not-running") throw error;
-    throw new PlexusError(
-      "not-running",
-      `Image ${name} is not running. Start it with image_start; it starts as it was last saved.`,
-    );
-  }
+  return { name, images, endpoint: await images.endpoint(name) };
 }
 
-// An image whose Pharo MCP predates 2.1.0 resolves tools/call against the
-// advertised list, so a tool it holds but does not advertise answers -32601.
-// That is the loudest way an older MCP shows itself, and the message alone
-// sends a reader looking for a tool that is right there.
-const methodNotFound = "-32601";
+// Raises the least a forwarded call waits: a call to a tool that keeps no
+// time limit of its own, or whose schema no listing gave, waits only that.
+const callSecondsVariable = "PHARO_AGENT_CALL_SECONDS";
 
-export function toolFailureMessage(message, row) {
-  const warning = row && message.includes(methodNotFound) ? olderMcpWarning(row) : undefined;
-  return warning ? `${message}\n${warning}` : message;
+/** PLexus's minute: a forwarded call never waits less than it did before the variable. */
+const leastCallSeconds = 60;
+
+let callSecondsRefused = false;
+
+/**
+ * The least a forwarded call waits for its answer, and what the handshake
+ * before it waits: PLexus's minute, or the whole number of seconds
+ * PHARO_AGENT_CALL_SECONDS gives when that is more. Any other value is
+ * ignored, and said once per process on stderr, which reaches a host's log.
+ *
+ * @param {Record<string, string | undefined>} [env]
+ */
+export function callMinimumMs(env = process.env) {
+  const setting = env[callSecondsVariable];
+  if (!setting) return leastCallSeconds * 1000;
+  if (/^\d+$/.test(setting)) return Math.max(Number(setting), leastCallSeconds) * 1000;
+  if (!callSecondsRefused) {
+    callSecondsRefused = true;
+    console.error(`pharo-agent: ${callSecondsVariable} takes a whole number of seconds, not ${JSON.stringify(setting)};`
+      + ` waiting at least ${leastCallSeconds} s.`);
+  }
+  return leastCallSeconds * 1000;
 }
 
-/** @param {Target} target */
-export async function callImageTool(target, toolName, argumentsValue) {
-  try {
-    return await callTool(target.endpoint, toolName, argumentsValue);
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    if (!message.includes(methodNotFound)) throw error;
-    const row = await target.images.list(target.name).then(([found]) => found, () => undefined);
-    throw new Error(toolFailureMessage(message, row));
-  }
+/**
+ * One call to an image tool. It waits longer than the call's own time limit,
+ * read from its `timeoutSeconds` or the default the image's `inputSchema`
+ * lists, so that the image's answer to a call it stopped arrives first; and no
+ * longer than `signal` lets it.
+ *
+ * It rejects with PLexus's error as it is, its `kind` saying whether the
+ * image answered or got the call at all. This package's own calls go through
+ * here too, the PIFS start and stop among them, so what a failure did to the
+ * image is said only where a call the agent made is answered.
+ *
+ * @param {Target} target
+ * @param {string} toolName
+ * @param {Record<string, unknown>} argumentsValue
+ * @param {{ inputSchema?: import("@modelcontextprotocol/sdk/types.js").Tool["inputSchema"], signal?: AbortSignal }} [options]
+ */
+export async function callImageTool(target, toolName, argumentsValue, options = {}) {
+  return callTool(target.endpoint, toolName, argumentsValue, {
+    ...(options.inputSchema ? { inputSchema: options.inputSchema } : {}),
+    minimumMs: callMinimumMs(),
+    ...(options.signal ? { signal: options.signal } : {}),
+  });
 }
 
 /**
@@ -272,11 +295,4 @@ export function withImageSelector(tool, holders, defaultImage, absence) {
       ...(defaultHolds ? {} : { required: [...(inputSchema.required ?? []), "image"] }),
     },
   };
-}
-
-export function toolResult(data) {
-  if (data && typeof data === "object" && Array.isArray(data.content)) {
-    return data;
-  }
-  return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
 }

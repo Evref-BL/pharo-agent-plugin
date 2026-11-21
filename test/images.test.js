@@ -8,7 +8,6 @@ import {
   deleteImage,
   listImageTemplates,
   listImages,
-  olderMcpWarning,
   useImage,
 } from "../src/images.js";
 import { readConfig, writeConfig } from "../src/project.js";
@@ -161,9 +160,11 @@ test("an image made with another pin says that recreating it gives the current M
   await inProject(async (root) => {
     const byName = Object.fromEntries((await listImages(root)).images.map((image) => [image.name, image]));
 
-    assert.match(byName.old.warning ?? "", /^Image old holds Pharo MCP 0\.0\.1/);
-    assert.ok(byName.old.warning?.includes(defaultPharoMcpVersion));
-    assert.match(byName.old.warning ?? "", /Recreating it gives it the current MCP/);
+    assert.equal(
+      byName.old.warning,
+      `Image old holds Pharo MCP 0.0.1, and images are created with ${defaultPharoMcpVersion} now, so its tools`
+        + " may differ from the current ones. Recreating it gives it the current MCP.",
+    );
     assert.equal(byName.current.warning, undefined);
     assert.equal(byName.scripted.warning, undefined, "a script's MCP is its author's");
   }, {
@@ -175,8 +176,11 @@ test("an image made with another pin says that recreating it gives the current M
   });
 });
 
-test("an image with no record of its MCP gets no warning", () => {
-  assert.equal(olderMcpWarning({ name: "legacy" }), undefined);
+test("an image with no record of its MCP gets no warning", async () => {
+  await inProject(async (root) => {
+    const [legacy] = (await listImages(root)).images;
+    assert.equal(legacy.warning, undefined);
+  }, { images: { "proj-legacy": { template } } });
 });
 
 test("templates are PLexus's, a name two categories offer marked", async () => {
