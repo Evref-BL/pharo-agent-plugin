@@ -1,0 +1,154 @@
+# Tool Reference
+
+How this server answers, and what it does when a call is not simply a success.
+What a tool takes is in its own schema: read that with `tool_get`, not from
+here.
+
+## Reading An Answer
+
+A call answers text: the summary first, then any warnings, then the payload as
+lines. A record opens with what it names: a method the way Pharo writes it,
+`MCPTool>>batchSummaryNoun` or `MCPTool class>>toolName` on the class side, or
+a class, package, file or variable by its name alone. The fields that identify
+it follow on the same line as `key=value` pairs, and a value carrying spaces is
+quoted, as in `protocol="private - results"`. A list of plain values is
+bracketed, as in `required: [name, slotName]`; a list whose values have lines
+of their own, such as stack frames, gives each value its own lines under the
+list's label. Other text with its own lines follows under its own label.
+
+A result does not repeat itself: what the summary states in prose, and what a
+record already says another way, is left out of the lines.
+
+The same payload is carried as `structuredContent` where the server is
+configured to send it, with `data` on success and `error` on failure, the call
+then also carrying the protocol's own `isError`.
+
+## Paging
+
+A page is the tool's own size, chosen for what one of its entries costs to
+read, so a page of classes is shorter than a page of repositories. When another
+page exists, the summary names the offset to ask for: call the same tool again
+with that `offset`. With structured content, `data` also carries `nextOffset`.
+
+A search answers what identifies each hit, not everything known about it.
+`repository_search` says how many packages a repository holds rather than
+naming them, which `package_search` answers.
+
+## Several Targets At Once
+
+A tool that acts on one target also takes a list where it names it, runs once
+per value and applies every other argument to each. A list of one is answered
+as that value alone. Given more, every target is attempted: the summary says
+how many succeeded, `data` carries one entry per target under `results` in
+request order, and an entry that failed carries its own `error`. The call is
+flagged `isError` only when every target failed.
+
+A tool that acts on a set takes its list whole, and its answer has no
+`results`. A removal given several names removes them together, as one change,
+or removes none of them.
+
+`class_update` and `method_update` are the opposite case: they take the whole
+change to one target and stop at the first part that fails, rather than leaving
+half a definition nobody asked for.
+
+## Warnings Are Not Failures
+
+Pharo signals a notification for a remark rather than a fault, and every
+`Warning` is one. The tool boundary resumes them with the value the image would
+have produced and the call proceeds, so a deprecated send, or an undeclared
+variable during a load, does not fail it.
+
+`RBRefactoringWarning` is the exception, and so is `class_remove`'s refusal of a
+class something still needs. They report a change that breaks something, so
+they stop the call; the message names every impact and says whether `force`
+gets past it, and with structured content the error also carries
+`impactMessages`, `howToProceed` and `forceSupported`. Send the same request
+with `force: true` only when the impacts are acceptable; forced warnings come
+back in the normal `warnings`.
+
+A method can compile and still answer critiques. They are review evidence about
+code that now exists, not a transport failure. Their line numbers count the
+method as stored, which `method_get` shows, and a critique names its rule class
+only when `method_rewrite` can apply that rule.
+
+## Methods A Trait Defines
+
+A method a class got from a trait is answered by the trait that defines it: a
+search names the trait and the classes its method reached, and `method_get`
+names the trait before the source. It is the trait's to change, so
+`method_compile` stops unless `force` says to override it in this class alone,
+and `method_update` and `method_remove` stop with nothing to force. A rewrite
+leaves such a method to its origin and names in `skippedTraitMethods` the ones
+its rules matched.
+
+## Rewriting
+
+`method_rewrite` takes Smalltalk AST patterns, not regex, and a scope is
+required: rewriting everything is something a caller asks for by naming the
+packages, not by leaving an argument out.
+
+A metavariable starts with a backquote and stands for whatever is in its place,
+however big, so one rule rewrites `anObject notNil` and `(anObject foo) notNil`
+alike. The names must be the same on both sides; a name that appears only in
+the replacement is bound to nothing. `confirm` is false by default, and the
+preview carries the old and new source of every change.
+
+The rules are applied again to what they produced until nothing more matches,
+so a rule that takes one step at a time, such as flattening a chain of
+concatenations, previews where it ends. A rewrite that keeps matching its own
+output is refused.
+
+```json
+{
+  "rules": [{ "match": "`@receiver notNil", "replacement": "`@receiver isNotNil" }],
+  "scope": { "packages": ["MyPackage"] }
+}
+```
+
+`ruleClasses` names a rewrite rule instead of writing its patterns out,
+Pharo's own included, and a rule that builds its replacement rather than
+writing it applies the same way. A rule that reports a critique is never
+applied by the tool that compiles: reporting is that tool's job, changing it is
+this one's, and the caller asks.
+
+## Mutation And Saving
+
+No tool saves the image. Mutating tools change the running image only, so
+closing it discards every change since its last save, and a mistake costs the
+session rather than the image file. Evaluate `Smalltalk saveSession` when a
+change should survive, or leave it to whoever owns the image lifecycle.
+
+The change history keeps what a stop or a mistake would cost.
+`method_version_list` lists one method's earlier versions and `method_restore`
+puts one back. `history_lost_change_list` lists what earlier sessions changed
+since the image was last saved, which a crash or a stop without saving lost,
+and `history_lost_change_restore` installs it again. For anything else, of this
+session or an earlier one, `history_entry_list` lists the entries,
+`history_file_list` the history's files, and `history_entry_apply` or
+`history_entry_revert` act on the indexes the list prints; the answer shows
+each method's source before and after.
+
+## The Escape Hatch
+
+`evaluate` runs arbitrary Smalltalk. Prefer a dedicated tool when one
+exists: it validates its input and answers structured data. A warning raised
+while the code runs is printed after the value, so a deprecated method's answer
+arrives with the deprecation that qualifies it, and so is what the code wrote to
+the Transcript. Code that ends on the Transcript itself answers only what it
+wrote. As in a Playground, a lowercase name the code assigns without
+declaring is a variable of that one call; a name it only reads stays undeclared.
+An evaluation stops at its `timeoutSeconds`; work that takes longer runs in a
+process forked at `Processor userBackgroundPriority` that writes its result to
+a file, which a later call reads.
+
+Compiling is the case that bites. Method source separates lines with CR, and
+`method_compile` normalizes what it is given, while a bare `compile:` from
+`evaluate` stores whatever it receives, so source read from a file keeps its LF
+and compares unequal to every other method in the image. To keep a method's text
+as written rather than formatted, as when restoring it from another branch, pass
+`format: false` to `method_compile` instead. To format a method already in the
+image, call `method_update` with `format: true` alone.
+
+A debugger somebody opened is theirs. Read it, act on what it shows with the
+ordinary class and method tools, and leave stepping, resuming and terminating
+to the person at the debugger.

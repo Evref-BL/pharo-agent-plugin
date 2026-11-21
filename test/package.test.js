@@ -18,47 +18,57 @@ test("package and host manifests share the plugin identity", () => {
 
   assert.equal(packageJson.name, "@evref-bl/pharo-agent");
   assert.equal(packageJson.repository.url, "git+https://github.com/Evref-BL/pharo-agent-plugin.git");
-  assert.equal(packageJson.dependencies["@evref-bl/pharo-mcp"], defaultPharoMcpVersion);
   assert.equal(agentPlugin.name, "pharo-agent");
   assert.equal(claudePlugin.name, agentPlugin.name);
   assert.equal(claudePlugin.version, agentPlugin.version);
   assert.equal(packageJson.version, agentPlugin.version);
-  assert.equal(
-    agentPlugin.extensions["com.openai"].onboardingSkill,
-    "./skills/pharo-setup/SKILL.md",
-  );
   assert.equal(agentPlugin.extensions["com.openai"].requires_local_executor, true);
 });
 
-test("setup skill installs the matching CLI release", () => {
+// The skills are MCP's for the images PLexus creates, so they come from the
+// MCP release PLexus loads.
+test("pins the pharo-mcp release PLexus loads into the images it creates", () => {
+  assert.equal(readJson("package.json").dependencies["@evref-bl/pharo-mcp"], defaultPharoMcpVersion);
+});
+
+// Claude Code installs a plugin's dependencies only when each is a registry
+// package pinned to an exact version.
+test("depends on exact registry versions only", () => {
   const packageJson = readJson("package.json");
-  const skill = fs.readFileSync(path.join(root, "skills/pharo-setup/SKILL.md"), "utf8");
-  assert.match(skill, new RegExp(`@evref-bl/pharo-agent@${packageJson.version} init --host claude`));
+  assert.equal(packageJson.devDependencies, undefined);
+  for (const [name, version] of Object.entries(packageJson.dependencies)) {
+    assert.match(version, /^\d+\.\d+\.\d+$/, name);
+  }
+});
+
+test("runs the server of the PLexus it pins, in the host's project", () => {
+  const plexus = readJson("node_modules/@evref-bl/plexus/package.json");
+  assert.equal(plexus.version, readJson("package.json").dependencies["@evref-bl/plexus"]);
+  assert.deepEqual(readJson(".mcp.json"), {
+    mcpServers: {
+      pharo: {
+        command: "node",
+        args: [`\${CLAUDE_PLUGIN_ROOT}/node_modules/@evref-bl/plexus/${plexus.bin.plexus}`, "mcp", "--project", "${CLAUDE_PROJECT_DIR}"],
+      },
+    },
+  });
+});
+
+test("the Claude Code marketplace installs the release's tag", () => {
+  const version = readJson("package.json").version;
+  const [plugin] = readJson(".claude-plugin/marketplace.json").plugins;
+  assert.equal(plugin.name, "pharo-agent");
+  assert.deepEqual(plugin.source, { source: "github", repo: "Evref-BL/pharo-agent-plugin", ref: `v${version}` });
+});
+
+test("the Codex marketplace exposes the plugin from the repository root", () => {
+  const [plugin] = readJson(".agents/plugins/marketplace.json").plugins;
+  assert.equal(plugin.name, "pharo-agent");
+  assert.equal(plugin.source, "./");
 });
 
 test("feedback skill names the release it ships with", () => {
   const packageJson = readJson("package.json");
   const skill = fs.readFileSync(path.join(root, "skills/pharo-feedback/SKILL.md"), "utf8");
   assert.ok(skill.includes(`\`pharo-agent ${packageJson.version}\``));
-});
-
-test("marketplaces expose the plugin from the repository root", () => {
-  const codexMarketplace = readJson(".agents/plugins/marketplace.json");
-  const claudeMarketplace = readJson(".claude-plugin/marketplace.json");
-
-  assert.equal(codexMarketplace.plugins[0].name, "pharo-agent");
-  assert.equal(codexMarketplace.plugins[0].source, "./");
-  assert.equal(claudeMarketplace.plugins[0].name, "pharo-agent");
-  assert.equal(claudeMarketplace.plugins[0].source, "./");
-});
-
-test("the published CLI entry point is executable", () => {
-  const packageJson = readJson("package.json");
-  const binPath = path.join(root, packageJson.bin["pharo-agent"]);
-
-  assert.equal(
-    (fs.statSync(binPath).mode & 0o111) !== 0,
-    true,
-    `${packageJson.bin["pharo-agent"]} must keep its executable bit so a global install can run it`,
-  );
 });

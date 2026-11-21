@@ -1,65 +1,32 @@
 # pharo-agent contributor guide
 
-`pharo-agent` is a terminal-first integration for Pharo projects. It installs
-only a selected agent host's conditional instruction shim. Where a host has a
-plugin manifest, the plugin declares the MCP server, which the host starts only
-where the plugin is enabled, and `init` writes none. A host without one
-(OpenCode) gets the `pharo` entry in its project configuration, which it reads
-for that project only, and nothing else of that file changes.
+The plugin is manifests, a server declaration and skills. It has no code of
+its own to run: `.mcp.json` starts PLexus's `plexus mcp` from the plugin's
+dependencies, in the host's project.
 
 ## Boundaries
 
-- PLexus owns images: creating, listing, starting, stopping and deleting
-  them, and where a running one answers. Nothing here keeps a list of images
-  or of which ones run.
-- MCP owns semantic image operations.
-- pharo-image-fs owns the projection protocol and mount daemon.
-- This package owns project initialization, conditional guidance, command
-  orchestration, and only resources recorded as plugin-owned.
-- The MCP forwarding bridge is process-scoped: it asks PLexus where the image
-  answers on every call, serves one terminal command over stdio, then exits.
-  Do not add an HTTP gateway, gateway port, or a background route service.
+- PLexus owns images and the server: the image tools, passing calls to an
+  image, the server's instructions to the host, and its telemetry.
+- MCP owns the tools inside an image and the Pharo guidance. The `pharo-*`
+  skills here, apart from `pharo-feedback`, are copies built from the pinned
+  `@evref-bl/pharo-mcp` by `npm run skills`. Fix them in MCP's templates;
+  never edit a copy.
+- This repository owns the manifests, the marketplaces, `.mcp.json`, the
+  `pharo-feedback` skill and the release.
 
-## Interface
+## Rules
 
-- Keep ordinary commands argument-light: `init --host`, `image start`,
-  `image list`, `image stop`, and `<tool>` with its arguments as flags read
-  from the tool's schema.
-- Images are addressed by name, in PLexus's vocabulary: `create`, `start`,
-  `stop`, `delete`, `list`, never `add`, `remove`, `open`, `close` or `status`.
-  A running image is a process: `list` asks like `ps`, `start` is `exec` and
-  `stop` is `kill`. Nothing here remembers whether an image runs.
-- `src/hosts.js` is the one list of supported hosts, in the order they are
-  offered. The usage line, the error message, the README and the setup skill
-  all follow it; do not spell the hosts out anywhere else.
-- Never take endpoints, ports, project roots or scopes as normal agent
-  arguments.
-- Do not register template skills with an agent host. The generated root shim
-  says to read `pharo.AGENTS.md` only for Pharo work; that guide selects a
-  copied skill only when necessary.
-- Pin runtime npm dependencies to released exact versions; do not use local
-  workspace links or floating ranges.
-- The setup skill runs in a project, not in the plugin, so it installs the CLI
-  itself. Keep its one `npx` command pinned to the matching CLI release, which
-  `scripts/set-version.mjs` moves. The declared MCP server runs the plugin's
-  own `bin/pharo-agent.js` instead: a host installs the plugin's dependencies
-  with it, and a chat should reach the version of the code it installed.
+- Pin dependencies to exact released versions. A host installs them only
+  then, and a release is a combination that was tested.
+- The `@evref-bl/pharo-mcp` pin is the MCP release PLexus loads into the
+  images it creates. `update-plexus.yml` moves both pins and rebuilds the
+  skills.
+- `scripts/set-version.mjs` moves every reference to the release: the
+  manifests, the marketplace's tag and the feedback skill's version.
+- Nothing is written into a user's project.
 
 ## Validation
 
-- Run `npm test` and `npm run check` after JavaScript changes. `check` type-checks
-  the sources against the published types of the packages this one pins, so a pin
-  bump that retires an API fails there.
-- Tests never start a Pharo image. `npm test` loads `test/support/plexus-hook.js`
-  first, which hands every import of `@evref-bl/plexus` the fake beside it; a
-  test that spawns `pharo-agent` passes the same hook with `--import`, and sets
-  the fake's store up with `useFakePlexus`. The hook also drops the shell's
-  `OTEL_*` and trace context, and looks for the telemetry settings file where
-  there is none, so a test sends traces only where it says.
-- Telemetry code uses `@opentelemetry/api` alone; only `src/telemetrySdk.js`
-  imports the SDK, and only once the settings name an exporter. A span records
-  names, never values.
-- Use disposable directories for initializer tests. Preserve existing user
-  guidance outside the plugin's marked managed block.
-- Do not claim live image or mount validation without a disposable image and
-  explicit cleanup result.
+- `npm test`. It never starts a Pharo image: the server test starts the
+  declared server on a store of its own, where no image runs.

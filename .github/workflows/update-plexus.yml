@@ -107,8 +107,9 @@ jobs:
           npm install --save-exact --ignore-scripts \
             "@evref-bl/pharo-mcp@${MCP_VERSION}" \
             "@evref-bl/plexus@${PLEXUS_VERSION}"
+          # The skills are copies of the pinned pharo-mcp's.
+          npm run skills
           npm test
-          npm run check
           echo "needed=true" >> "$GITHUB_OUTPUT"
 
       - name: Create update pull request
