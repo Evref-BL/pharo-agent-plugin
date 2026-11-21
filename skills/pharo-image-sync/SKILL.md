@@ -1,0 +1,69 @@
+---
+name: pharo-image-sync
+description: Move code between a live Pharo image and its Tonel files, and tell the two apart. Use before exporting image changes, after a checkout moves under the image, before saying what is or is not committed, and whenever Iceberg, the image and the files disagree.
+---
+
+# Pharo Image Sync
+
+The image holds objects, the repository holds files, and Iceberg holds its own
+idea of both. A clean `git status` does not mean the image is clean, and an
+Iceberg diff does not mean anything was written to disk.
+
+Git itself is ordinary shell work. These tools only cross the boundary between
+the image and the files.
+
+## What Is Committed
+
+The user may commit through Iceberg at any time, and nothing tells you. What
+you remember changing is not evidence that it is uncommitted, so ask before
+calling anything unsaved or at risk.
+
+- `git log` in the checkout says what was committed. Iceberg commits are
+  ordinary git commits, so it answers even when the image does not.
+- `repository_search` with `isModified` names the repositories and packages
+  Iceberg marks as changed since they were last written. A mark says where to
+  look, not that something differs: an edit that was undone, or a test that
+  compiled and removed a method, leaves one too.
+- `repository_change_list` compares a repository's marked packages with its
+  files and names those that really differ, and the files git sees changed.
+  Anything not committed is in one of them.
+- To know whether one change is committed, compare `method_get` with the
+  class's file at `HEAD` (`git show HEAD:<path>`).
+
+`git status` cannot answer for the image: Iceberg writes files only when it
+commits or exports, so the checkout stays clean while the image holds changes.
+
+## Out Of The Image
+
+1. Verify which repository you are about to write to: `repository_search` for
+   its location, branch and packages, then `repository_identity_verify` with
+   what you expect, which fails rather than guessing.
+2. Read the image-side diff with `repository_change_list` before writing
+   anything.
+3. `repository_export` writes the repository's packages from the image, in
+   the checkout's format, and names the files that changed and anything
+   else left uncommitted. It stages and commits nothing.
+4. Read what it wrote with `git diff`. Export writes what the image holds,
+   which includes anything loaded into it that you did not put there.
+
+## Into The Image
+
+A checkout that moves under a running image leaves it running the old code.
+After a branch switch, a pull, a merge or a rebase, `repository_reload` loads
+the packages from the files again.
+
+Reloading can leave classes behind in `Undeclared` when a superclass moved,
+with subclasses still parented to an obsolete one. The symptom is tests failing
+on classes nobody edited. Load that package again by name to repair it.
+
+## Stop And Ask
+
+Stop when two registrations claim the same packages, when the branch, source
+directory or package membership is not what you expect, when a head is detached
+or missing, or when Iceberg and the files disagree for no reason you can name.
+Resolving real divergence, or discarding image changes, is the user's call.
+
+## Report
+
+Say what the image held, what was written, which files changed, and what you
+did not verify.

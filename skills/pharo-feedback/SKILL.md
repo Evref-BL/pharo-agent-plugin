@@ -12,9 +12,8 @@ user approves.
 
 ## Look back
 
-Go over this conversation's calls to the Pharo tools, whether through this
-plugin's MCP tools or the `pharo-agent` command, and keep what the tools did
-wrong:
+Go over this conversation's calls to the Pharo tools and keep what the tools
+did wrong:
 
 - a call failed with an error you could not have avoided: an internal error, a
   Smalltalk exception, a timeout;
@@ -37,12 +36,14 @@ Then ask the user whether a tool got in their way in a way you did not notice.
 ## Where each one goes
 
 - The image's own tools, from classes, methods and tests to repositories,
-  search and evaluation, and the Pharo guidance copied into the project
-  (`pharo.AGENTS.md`, the `pharo-*` skills and references): `Evref-BL/MCP`.
-- Everything else this plugin brings, such as the `image_*` tools, the source
-  projection, setup, the `pharo-agent` command and the passing of calls between
-  the host and an image: `Evref-BL/pharo-agent-plugin`. Its maintainers move an
-  issue to the component that owns it.
+  search and evaluation, and the Pharo guidance this plugin carries (the
+  `pharo-guide` skill and the other `pharo-*` skills, apart from this one):
+  `Evref-BL/MCP`.
+- The `image_*` tools, the server's instructions and the passing of calls
+  between the host and an image: `Evref-BL/PLexus`.
+- Installing and enabling the plugin, and this skill:
+  `Evref-BL/pharo-agent-plugin`. Its maintainers move an issue to the
+  component that owns it.
 
 When the project loads an MCP of its own into the image, that project answers
 for the image's tools.
