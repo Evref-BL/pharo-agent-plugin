@@ -72,10 +72,14 @@ test("image start takes one name and a display", async () => {
   });
 });
 
-test("image stop takes one name or --all", async () => {
+test("image stop takes one name or --all, and optionally --save", async () => {
   await inProject(async () => {
-    await assert.rejects(() => main(["image", "stop", "dev", "ci"]), /image stop takes one image name or --all/);
+    await assert.rejects(() => main(["image", "stop", "dev", "ci"]), /^Error: image stop takes one image name or --all, and optionally --save$/);
+    await assert.rejects(() => main(["image", "stop", "dev", "--save", "ci"]), /image stop takes one image name or --all, and optionally --save/);
+    await assert.rejects(() => main(["image", "stop", "dev", "--save=yes"]), /image stop takes one image name or --all, and optionally --save/);
     await assert.rejects(() => main(["image", "stop", "dev", "--all"]), /takes no image name/);
+    await assert.rejects(() => main(["image", "stop", "--save", "dev", "--all"]), /takes no image name/);
+    assert.deepEqual(callsOf("stop"), []);
   });
 });
 
@@ -148,7 +152,13 @@ test("each image command prints its tool's text, and with --json the JSON it pri
         ].join("\n"),
       );
       assert.equal(await said(["image", "use", "p13"]), "The project's default image is p13 now.");
-      assert.equal(await said(["image", "stop", "dev"]), "Stopped image dev; what it had not saved is lost. image_stop with save: true saves an image before stopping it.");
+      assert.equal(
+        await said(["image", "stop", "dev"]),
+        "Stopped image dev; what it had not saved is lost. image_stop with save: true saves an image before stopping it.",
+      );
+      await main(["image", "start", "dev"]);
+      assert.equal(await said(["image", "stop", "--save", "dev"]), "Saved and stopped image dev.");
+      assert.deepEqual(callsOf("stop").map((call) => call.options), [undefined, { save: true }]);
       assert.equal(
         await said(["image", "delete", "p13"]),
         "Deleted image p13 and its files. It was the project's default image; the next image created becomes the default.",
@@ -209,6 +219,11 @@ test("--json, anywhere among an image command's arguments, prints the object a s
       assert.deepEqual(await parsed(["image", "use", "dev", "--json"]), { ok: true, defaultImage: "dev" });
       assert.deepEqual(await parsed(["image", "--json", "use", "dev"]), { ok: true, defaultImage: "dev" });
       assert.deepEqual(await parsed(["image", "stop", "--json"]), { ok: true, stopped: [{ name: "dev", killed: [90001] }] });
+      await parsed(["image", "start", "--json"]);
+      assert.deepEqual(
+        await parsed(["image", "stop", "--save", "--json"]),
+        { ok: true, stopped: [{ name: "dev", killed: [], saved: true }] },
+      );
       assert.deepEqual(await parsed(["image", "delete", "dev", "--json"]), { ok: true, name: "dev", clearedDefault: true });
     });
   } finally {
@@ -266,7 +281,8 @@ test("help is answered wherever the word lands without initializing a project", 
       [["image", "create", "--help"], /first image created is the default/],
       [["image", "list", "--help"], /which are running now/],
       [["image", "list", "--help"], /pharo-agent image list \[--json\][^]*--json prints the answer as JSON, for a script\./],
-      [["image", "--help"], /pharo-agent image stop \[<name>\] \[--all\] \[--json\]/],
+      [["image", "--help"], /pharo-agent image stop \[<name>\] \[--all\] \[--save\] \[--json\]/],
+      [["image", "stop", "--help"], /--save has the image save itself and\nquit instead; one that does not take the save, or does not quit in time, is left running\./],
       [["image", "templates", "--help"], /templates images can be created from/],
       [["image", "use", "--help"], /Make an image the default/],
       [["image", "delete", "--help"], /Delete a stopped image/],

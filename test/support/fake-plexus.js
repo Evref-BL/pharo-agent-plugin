@@ -44,6 +44,11 @@ const scopePattern = /^[A-Za-z0-9][A-Za-z0-9._]{0,63}$/;
  * that `hangs` answers nothing until its caller's signal aborts, and then
  * rejects as cancelled, as PLexus's does, recording `callCancelled`.
  *
+ * A stop asked to save an image that `saveFails` refuses with that text, as
+ * PLexus refuses a save the image did not make, and leaves it running. One
+ * asked to save an image that `quitsUnsaved` leaves it with no VM, and
+ * refuses as PLexus refuses an image that quit without writing its file.
+ *
  * @typedef {{
  *   template?: string,
  *   category?: string,
@@ -54,6 +59,8 @@ const scopePattern = /^[A-Za-z0-9][A-Za-z0-9._]{0,63}$/;
  *   running?: { pids: number[], display?: string, endpoint?: { url: string, pid?: number }, endpointProblem?: string },
  *   startFails?: string,
  *   stopFails?: string,
+ *   saveFails?: string,
+ *   quitsUnsaved?: boolean,
  *   unreachable?: boolean,
  *   hangs?: boolean,
  *   busy?: boolean,
@@ -332,17 +339,26 @@ export class Images {
     return { name, pids: [endpoint.pid], endpoint, display, seconds: 0 };
   }
 
-  /** @param {string} name */
-  async stop(name) {
-    const world = this.record("stop", { name });
+  /**
+   * Kills the image's VMs, or with `save`, has the image save itself and
+   * quit, which leaves no VM to kill. Recorded with the options it was given.
+   *
+   * @param {string} name
+   * @param {{ save?: boolean }} [options]
+   */
+  async stop(name, options) {
+    const world = this.record("stop", { name, ...(options === undefined ? {} : { options }) });
     writeWorld(world);
     const diskName = this.existing(world, name);
-    const { stopFails } = world.images[diskName];
-    if (stopFails) throw new PlexusError("stop-failed", stopFails);
-    const killed = world.images[diskName].running?.pids ?? [];
-    delete world.images[diskName].running;
+    const image = world.images[diskName];
+    if (image.stopFails) throw new PlexusError("stop-failed", image.stopFails);
+    const pids = image.running?.pids ?? [];
+    const saved = options?.save === true && pids.length > 0;
+    if (saved && image.saveFails) throw new PlexusError("save-failed", image.saveFails, { pids });
+    delete image.running;
     writeWorld(world);
-    return { name, killed };
+    if (saved && image.quitsUnsaved) throw new PlexusError("stopped-unsaved", texts.stoppedUnsaved(name));
+    return saved ? { name, killed: [], saved: /** @type {const} */ (true) } : { name, killed: pids };
   }
 
   /** @param {string} name */

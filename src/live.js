@@ -281,9 +281,15 @@ export async function startAgentImage(projectRoot, name, options = {}) {
  * hand, or by an older PLexus, has no endpoint, and only a stop that names
  * its image reaches it: `all` leaves it running, and says which it left.
  *
+ * With `save`, PLexus has each image save itself and quit, and its source is
+ * not unmounted first: its daemon unmounts once the image has exited, and
+ * the record goes once PLexus says it has, saved or not. An image that still
+ * runs keeps its source. `all` goes on past an image that did not save, and
+ * gives PLexus's answer for it, which says whether it still runs.
+ *
  * @param {string} projectRoot
  * @param {string} [name]
- * @param {{ all?: boolean }} [options]
+ * @param {{ all?: boolean, save?: boolean }} [options]
  * @returns {Promise<import("./answers.js").AgentStop>}
  */
 export async function stopAgentImage(projectRoot, name, options = {}) {
@@ -294,7 +300,25 @@ export async function stopAgentImage(projectRoot, name, options = {}) {
   const listed = options.all ? await images.list() : await images.list(resolveImageName(projectRoot, name));
   const rows = options.all ? listed.filter((row) => row.endpoint) : listed;
   const stopped = [];
+  /** @type {string[]} */
+  const notSaved = [];
   for (const row of rows) {
+    if (options.save) {
+      try {
+        stopped.push(await images.stop(row.name, { save: true }));
+      } catch (error) {
+        // PLexus did not save this one: save-failed when it still runs,
+        // stopped-unsaved when its VM quit without writing its file. The
+        // others are still the stop of all's to save.
+        const exited = error?.code === "stopped-unsaved";
+        if (exited) forgetProjection(projectRoot, row.name);
+        if (!options.all || !(exited || error?.code === "save-failed")) throw error;
+        notSaved.push(error.message);
+        continue;
+      }
+      forgetProjection(projectRoot, row.name);
+      continue;
+    }
     const projection = liveProjection(projectRoot, row);
     if (projection && row.endpoint) {
       try {
@@ -312,5 +336,9 @@ export async function stopAgentImage(projectRoot, name, options = {}) {
     stopped.push(await images.stop(row.name));
     forgetProjection(projectRoot, row.name);
   }
-  return { stopped, left: options.all ? listed.filter((row) => row.running && !row.endpoint) : [] };
+  return {
+    stopped,
+    left: options.all ? listed.filter((row) => row.running && !row.endpoint) : [],
+    ...(notSaved.length === 0 ? {} : { notSaved }),
+  };
 }
