@@ -94,19 +94,6 @@ agent look back over the conversation for tool calls that failed, misled it
 or needed a workaround, and draft issues for the tools' maintainers. It
 searches for existing issues first, and files only the drafts you approve.
 
-## Upgrading from 0.19
-
-Earlier releases set a project up with `pharo-agent init`. Nothing reads what
-it wrote any more, so it can go: the block between `<!-- pharo-agent:begin -->`
-and `<!-- pharo-agent:end -->` in `CLAUDE.md` or `AGENTS.md`,
-`pharo.AGENTS.md`, `.pharo-agent/`, and, for OpenCode, the `pharo` entry in
-`opencode.json`, which the one above replaces. The `pharo-agent` command is
-gone with it.
-
-Images stay: their scope is still the directory's name. A project whose
-`.pharo-agent/config.json` named another scope reaches its images by setting
-`PLEXUS_SCOPE` to it in the server's environment.
-
 ## Tracing
 
 PLexus traces the calls it serves with OpenTelemetry once settings name an
