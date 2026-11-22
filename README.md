@@ -97,9 +97,9 @@ searches for existing issues first, and files only the drafts you approve.
 ## Tracing
 
 PLexus traces the calls it serves with OpenTelemetry once settings name an
-exporter, and sends nothing otherwise. Agent hosts do not pass `OTEL_*`
-variables to the servers they start, so PLexus reads them from its own
-settings file, `~/.config/plexus/otel.env`, when its environment has none, and
-passes them on to the images it starts. A span records names, never values: no
+exporter, and sends nothing otherwise. It reads them from its own settings
+file, `~/.config/plexus/otel.env`: when the file gives settings, they replace
+any `OTEL_*` the agent host passed down, and otherwise the environment
+decides. PLexus passes them on to the images it starts. A span records names, never values: no
 argument, answer, path, or image or project name. [PLexus's README](https://github.com/Evref-BL/PLexus#telemetry) says
 what each span holds.
