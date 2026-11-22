@@ -7,6 +7,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { templateDirectory } from "@evref-bl/pharo-mcp";
 
 const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 
@@ -50,8 +51,8 @@ export function buildSkills(templates, skillsDirectory) {
   fs.cpSync(path.join(templates, "pharo-references"), path.join(guide, "pharo-references"), { recursive: true });
 }
 
-/** pharo-mcp's templates, as installed beside the plugin. */
-export const pinnedTemplates = path.join(root, "node_modules", "@evref-bl", "pharo-mcp", "templates");
+/** The templates of the pharo-mcp release the plugin pins, where that release says they are. */
+export const pinnedTemplates = templateDirectory();
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   buildSkills(pinnedTemplates, path.join(root, "skills"));

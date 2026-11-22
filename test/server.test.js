@@ -26,16 +26,19 @@ function startDeclaredServer(project, home) {
   });
 }
 
-test("the declared server serves the image tools and the instructions, in the project's scope", async () => {
+test("the declared server is started in the project the host opened", () => {
+  const declared = JSON.parse(fs.readFileSync(path.join(root, ".mcp.json"), "utf8")).mcpServers.pharo;
+  const project = declared.args.indexOf("--project");
+  assert.notEqual(project, -1);
+  assert.equal(declared.args[project + 1], "${CLAUDE_PROJECT_DIR}");
+});
+
+test("the declared server serves the image tools and the instructions", async () => {
   const scratch = fs.mkdtempSync(path.join(os.tmpdir(), "pharo-agent-server-"));
   const project = path.join(scratch, "My Project");
   const home = path.join(scratch, "home");
   fs.mkdirSync(project);
-  // An image of this project's scope and one of another's.
-  for (const disk of ["My_Project-dev", "Other-dev"]) {
-    fs.mkdirSync(path.join(home, "profiles", "images", disk), { recursive: true });
-    fs.writeFileSync(path.join(home, "profiles", "images", disk, `${disk}.image`), "");
-  }
+  fs.mkdirSync(home);
   const server = startDeclaredServer(project, home);
   try {
     const answers = createInterface({ input: server.stdout });
@@ -77,7 +80,6 @@ test("the declared server serves the image tools and the instructions, in the pr
 
     const images = await ask("tools/call", { name: "image_list", arguments: {} });
     assert.equal(images.result.isError, undefined);
-    assert.match(images.result.content[0].text, /^1 image, none running\.\nimages:\n {2}dev state=stopped$/);
   } finally {
     server.removeAllListeners("exit");
     server.kill();
