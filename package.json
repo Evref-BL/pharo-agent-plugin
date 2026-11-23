@@ -1,6 +1,6 @@
 {
   "name": "@evref-bl/pharo-agent",
-  "version": "0.23.0",
+  "version": "0.23.1",
   "private": false,
   "description": "Live Pharo images for coding agents: PLexus's MCP server and MCP's Pharo skills, as a plugin.",
   "license": "Apache-2.0",
