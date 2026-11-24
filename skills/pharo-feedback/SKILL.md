@@ -7,24 +7,26 @@ description: Look back on how the Pharo tools served this conversation and propo
 
 The Pharo tools improve from what their users run into, and you saw this
 conversation's tool calls more closely than anyone. Turn what got in your way
-into issues the maintainers can act on. Issues are public: file only what the
-user approves.
+into issues the maintainers can act on.
 
 ## Look back
 
-Go over this conversation's calls to the Pharo tools and keep what the tools
-did wrong:
+Go over this conversation's calls to the Pharo tools, and what the work left
+behind, and keep what the tools or their guidance did wrong:
 
 - a call failed with an error you could not have avoided: an internal error, a
   Smalltalk exception, a timeout;
 - a call failed on your input, and its description, schema or error message
   led you there or did not say what was wrong;
-- a search missed a tool that existed, or found it only after several tries;
+- a search missed a tool that existed;
 - an answer was wrong, partial, too large to use, or said less than you needed;
 - a warning or the Pharo guidance sent you the wrong way;
-- you fell back to `evaluate`, a shell or the files because no tool did
+- you fell back to evaluating code, a shell or the files because no tool did
   what you needed;
-- one step took several attempts.
+- one step took several attempts;
+- nothing failed, but the guidance never asked for a step the work needed,
+  which shows in what it left behind: images still running, or kept long
+  after their work was done.
 
 Leave out your own slips that a clear error caught, bugs in the user's project,
 and passing trouble such as a network outage, unless the tool handled it badly.
@@ -36,11 +38,11 @@ Then ask the user whether a tool got in their way in a way you did not notice.
 ## Where each one goes
 
 - The image's own tools, from classes, methods and tests to repositories,
-  search and evaluation, and the Pharo guidance this plugin carries (the
-  `pharo-guide` skill and the other `pharo-*` skills, apart from this one):
-  `Evref-BL/MCP`.
-- The `image_*` tools, the server's instructions and the passing of calls
-  between the host and an image: `Evref-BL/PLexus`.
+  search and evaluation, and the Pharo guidance in this plugin's other
+  skills: `Evref-BL/MCP`.
+- Creating, starting, stopping and deleting images, the server's
+  instructions, and the passing of calls between the host and an image:
+  `Evref-BL/PLexus`.
 - Installing and enabling the plugin, and this skill:
   `Evref-BL/pharo-agent-plugin`. Its maintainers move an issue to the
   component that owns it.
@@ -64,13 +66,13 @@ instead of a new issue.
 One issue per problem; findings that share a cause make one issue. Title it
 with what goes wrong, in the tool's own terms. Keep the body short:
 
-- **Tool:** its name; `pharo-agent 0.24.1`; the image's Pharo version, which
-  `image_list` gives; the host you run in.
+- **Tool:** its name; `pharo-agent 0.24.1`; the image's Pharo version; the
+  host you run in.
 - **What happened:** what you asked for and what came back, the error quoted
   and trimmed.
 - **Expected:** what would have served.
 - **Workaround:** what worked instead, or none.
-- **To reproduce:** the smallest call that shows it.
+- **To reproduce:** the smallest call, or steps, that show it.
 
 End with: "Reported through the pharo-agent feedback skill."
 
@@ -82,8 +84,9 @@ project's material, say so and let the user decide.
 
 ## Propose, then file
 
-Show every draft in full, with its repository, and ask which to file. File only
-those the user names:
+Show every draft in full, with its repository, and ask which to file. Where
+the fix is small and clear, offer a pull request instead: contributions are
+welcome. File or open only what the user names:
 
 ```sh
 gh issue create --repo Evref-BL/MCP --title "<title>" --body-file <draft>

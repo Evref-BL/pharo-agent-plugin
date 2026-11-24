@@ -91,8 +91,9 @@ reference fits a task.
 
 **A way to report what got in its way.** The `pharo-feedback` skill has the
 agent look back over the conversation for tool calls that failed, misled it
-or needed a workaround, and draft issues for the tools' maintainers. It
-searches for existing issues first, and files only the drafts you approve.
+or needed a workaround, and for steps the guidance never asked for, and draft
+issues for the tools' maintainers, or a pull request where the fix is small.
+It searches for existing issues first, and files only what you approve.
 
 ## Tracing
 
