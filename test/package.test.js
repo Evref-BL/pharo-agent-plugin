@@ -72,3 +72,12 @@ test("feedback skill names the release it ships with", () => {
   const skill = fs.readFileSync(path.join(root, "skills/pharo-feedback/SKILL.md"), "utf8");
   assert.ok(skill.includes(`\`pharo-agent ${packageJson.version}\``));
 });
+
+// npm and GitHub find the licence by its text, not by package.json.
+test("ships the full text of the licence it declares", () => {
+  assert.equal(readJson("package.json").license, "Apache-2.0");
+  const license = fs.readFileSync(path.join(root, "LICENSE"), "utf8");
+  assert.match(license, /^\s*Apache License\s+Version 2\.0, January 2004/);
+  assert.ok(license.includes("9. Accepting Warranty or Additional Liability."));
+  assert.ok(license.includes("END OF TERMS AND CONDITIONS"));
+});
