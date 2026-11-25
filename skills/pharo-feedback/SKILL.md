@@ -66,7 +66,7 @@ instead of a new issue.
 One issue per problem; findings that share a cause make one issue. Title it
 with what goes wrong, in the tool's own terms. Keep the body short:
 
-- **Tool:** its name; `pharo-agent 0.25.0`; the image's Pharo version; the
+- **Tool:** its name; `pharo-agent 0.26.0`; the image's Pharo version; the
   host you run in.
 - **What happened:** what you asked for and what came back, the error quoted
   and trimmed.
