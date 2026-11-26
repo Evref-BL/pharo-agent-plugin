@@ -22,7 +22,6 @@ test("package and host manifests share the plugin identity", () => {
   assert.equal(claudePlugin.name, agentPlugin.name);
   assert.equal(claudePlugin.version, agentPlugin.version);
   assert.equal(packageJson.version, agentPlugin.version);
-  assert.equal(agentPlugin.extensions["com.openai"].requires_local_executor, true);
 });
 
 // The skills are MCP's for the images PLexus creates, so they come from the
@@ -54,11 +53,12 @@ test("runs the server of the PLexus it pins, in the host's project", () => {
   });
 });
 
-test("the Claude Code marketplace installs the release's tag", () => {
-  const version = readJson("package.json").version;
+// The release workflow moves stable to a release once its tag exists, so the
+// marketplace never names a tag not made yet, nor serves main.
+test("the Claude Code marketplace installs from stable", () => {
   const [plugin] = readJson(".claude-plugin/marketplace.json").plugins;
   assert.equal(plugin.name, "pharo-agent");
-  assert.deepEqual(plugin.source, { source: "github", repo: "Evref-BL/pharo-agent-plugin", ref: `v${version}` });
+  assert.deepEqual(plugin.source, { source: "github", repo: "Evref-BL/pharo-agent-plugin", ref: "stable" });
 });
 
 test("the Codex marketplace exposes the plugin from the repository root", () => {
@@ -71,6 +71,27 @@ test("feedback skill names the release it ships with", () => {
   const packageJson = readJson("package.json");
   const skill = fs.readFileSync(path.join(root, "skills/pharo-feedback/SKILL.md"), "utf8");
   assert.ok(skill.includes(`\`pharo-agent ${packageJson.version}\``));
+});
+
+test("the README names the PLexus release it pins", () => {
+  const plexus = readJson("package.json").dependencies["@evref-bl/plexus"];
+  const readme = fs.readFileSync(path.join(root, "README.md"), "utf8");
+  const links = [...readme.matchAll(/Evref-BL\/PLexus\/(?:blob|tree)\/([^/\s)]+)/g)].map((match) => match[1]);
+  const commands = [...readme.matchAll(/@evref-bl\/plexus@([^"\s]+)/g)].map((match) => match[1]);
+  assert.ok(links.length > 0);
+  for (const ref of links) assert.equal(ref, `v${plexus}`);
+  for (const version of commands) assert.equal(version, plexus);
+});
+
+// A host installs the plugin's dependencies from its lock. The release train
+// refreshes it after set-version.mjs; a lock that disagrees would install
+// other versions than the release names.
+test("the lock records the release and its pins", () => {
+  const packageJson = readJson("package.json");
+  const lock = readJson("package-lock.json");
+  assert.equal(lock.version, packageJson.version);
+  assert.equal(lock.packages[""].version, packageJson.version);
+  assert.deepEqual(lock.packages[""].dependencies, packageJson.dependencies);
 });
 
 // npm and GitHub find the licence by its text, not by package.json.

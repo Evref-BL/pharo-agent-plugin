@@ -20,10 +20,14 @@ dependencies, in the host's project.
 - Pin dependencies to exact released versions. A host installs them only
   then, and a release is a combination that was tested.
 - The `@evref-bl/pharo-mcp` pin is the MCP release PLexus loads into the
-  images it creates. `update-plexus.yml` moves both pins and rebuilds the
-  skills.
+  images it creates. `update-plexus.yml` moves both pins, rebuilds the
+  skills and moves the README's PLexus release with them.
 - `scripts/set-version.mjs` moves every reference to the release: the
-  manifests, the marketplace's tag and the feedback skill's version.
+  manifests and the feedback skill's version.
+- The marketplaces install from `stable`, which the release workflow moves to
+  a release once its tag exists.
+- A release is major when what the README's Versions section lists changes,
+  a tool's name or arguments included.
 - Nothing is written into a user's project.
 
 ## Validation

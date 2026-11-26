@@ -11,7 +11,6 @@ const files = [
   "package.json",
   "plugin.json",
   ".claude-plugin/plugin.json",
-  ".claude-plugin/marketplace.json",
   "skills/pharo-feedback/SKILL.md",
 ];
 
@@ -29,7 +28,6 @@ test("set-version moves every reference to the release", () => {
     for (const file of files.slice(0, 3)) {
       assert.equal(JSON.parse(read(file)).version, "0.1.1", file);
     }
-    assert.equal(JSON.parse(read(".claude-plugin/marketplace.json")).plugins[0].source.ref, "v0.1.1");
     assert.match(read("skills/pharo-feedback/SKILL.md"), /`pharo-agent 0\.1\.1`/);
   } finally {
     fs.rmSync(directory, { recursive: true, force: true });

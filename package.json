@@ -24,7 +24,8 @@
   "scripts": {
     "test": "node --test test/*.test.js",
     "skills": "node scripts/build-skills.mjs",
-    "package:check": "npm pack --dry-run"
+    "package:check": "npm pack --dry-run",
+    "pin-readme": "node scripts/pin-readme.mjs"
   },
   "dependencies": {
     "@evref-bl/pharo-mcp": "4.6.0",
