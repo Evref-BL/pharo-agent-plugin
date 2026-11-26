@@ -27,7 +27,8 @@ into the images it creates.
 - [Pharo Launcher](https://pharo-project.github.io/pharo-launcher/), which is
   where templates and VMs come from.
 - Network access to create an image: the Launcher downloads its template and
-  VM, and the image loads MCP from GitHub.
+  VM, and the image loads MCP from GitHub. In Codex and OpenCode, also the
+  first time the server starts, as `npx` fetches PLexus.
 
 ## Installing
 
@@ -44,23 +45,11 @@ is on for the marketplace, under **Marketplaces** in `/plugin`. Otherwise
 `/plugin` updates it under **Installed**, as does
 `claude plugin update pharo-agent@evref-bl` in a shell.
 
-To enable it only where Pharo work happens, commit this to the project's
-`.claude/settings.json`:
-
-```json
-{
-  "extraKnownMarketplaces": {
-    "evref-bl": {
-      "source": { "source": "git", "url": "https://github.com/Evref-BL/pharo-agent-plugin.git" }
-    }
-  },
-  "enabledPlugins": { "pharo-agent@evref-bl": true }
-}
-```
-
-Each person working in the project then installs it once in each clone:
+To enable it only where Pharo work happens, install it for the project, in
+each clone:
 
 ```sh
+claude plugin marketplace add Evref-BL/pharo-agent-plugin
 claude plugin install pharo-agent@evref-bl --scope project
 ```
 
@@ -80,8 +69,22 @@ goes in Codex's own configuration, where it starts in the project:
 codex mcp add pharo -- npx --yes @evref-bl/plexus@1.0.0 mcp --project .
 ```
 
-That entry, in a trusted project's `.codex/config.toml` instead, keeps the
-server to that project.
+To keep it to one project, put the same entry in that trusted project's
+`.codex/config.toml` instead:
+
+```toml
+[mcp_servers.pharo]
+command = "npx"
+args = ["--yes", "@evref-bl/plexus@1.0.0", "mcp", "--project", "."]
+```
+
+A session that ends while `npx` first fetches PLexus can leave the next one
+without the server for a minute; `npx --yes @evref-bl/plexus@1.0.0 --version`
+fetches it beforehand.
+
+A new release takes `codex plugin marketplace upgrade evref-bl`, then
+`codex plugin add pharo-agent@evref-bl` and the server entry again, as this
+README gives them for that release: each replaces what it installed.
 
 ### OpenCode
 
