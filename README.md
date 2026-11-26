@@ -103,5 +103,5 @@ exporter, and sends nothing otherwise. It reads them from its own settings
 file, `~/.config/plexus/otel.env`: when the file gives settings, they replace
 any `OTEL_*` the agent host passed down, and otherwise the environment
 decides. PLexus passes them on to the images it starts. By default, a span records names, never values: no
-argument, answer, path, or image or project name. [PLexus's telemetry guide](https://github.com/Evref-BL/PLexus/blob/main/docs/telemetry.md) says
+argument, answer, path, or image or project name. [PLexus's observability guide](https://github.com/Evref-BL/PLexus/blob/main/docs/observability.md) says
 what each span holds.
