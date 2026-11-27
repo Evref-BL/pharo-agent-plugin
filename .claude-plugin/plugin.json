@@ -1,7 +1,7 @@
 {
   "name": "pharo-agent",
   "displayName": "Pharo Agent",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "Live Pharo images for coding agents: PLexus's MCP server and MCP's Pharo skills, as a plugin.",
   "author": {
     "name": "Evref-BL",
