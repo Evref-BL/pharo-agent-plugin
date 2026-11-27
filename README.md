@@ -83,7 +83,7 @@ which run. A project's images are those of its scope, the name of the
 project's directory, so projects whose directories share a name share their
 images. An image takes one writer, so an agent creates one per subject rather
 than share one.
-[PLexus's documentation](https://github.com/Evref-BL/PLexus/blob/v1.0.1/docs/mcp-server.md)
+[PLexus's documentation](https://github.com/Evref-BL/PLexus/blob/v1.1.0/docs/mcp-server.md)
 says what each tool does.
 
 **The tools of each running image.** Every call names the image it is for: a
@@ -106,7 +106,7 @@ It searches for existing issues first, and files only what you approve.
 
 PLexus traces the calls it serves with OpenTelemetry once its settings name an
 exporter, and sends nothing otherwise.
-[PLexus's observability guide](https://github.com/Evref-BL/PLexus/blob/v1.0.1/docs/observability.md)
+[PLexus's observability guide](https://github.com/Evref-BL/PLexus/blob/v1.1.0/docs/observability.md)
 says where the settings go and what each span holds.
 
 ## Versions
