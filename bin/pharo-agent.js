@@ -79,8 +79,14 @@ function main(argv) {
  * without the server until its lock went stale.
  */
 function fetchPlexus(version) {
+  // An npx that ran this passes its own package down, which would replace
+  // the one asked for here.
+  const env = Object.fromEntries(
+    Object.entries(process.env).filter(([name]) => !/^npm_config_(package|call)$/i.test(name)),
+  );
   const fetched = spawnSync("npx", ["--yes", `@evref-bl/plexus@${version}`, "--version"], {
     encoding: "utf8",
+    env,
     timeout: 300_000,
     // npx is a .cmd file on Windows, which Node runs only through a shell.
     shell: process.platform === "win32",

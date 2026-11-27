@@ -32,35 +32,44 @@ test("Codex gets a pharo table, after what the file already holds", () => {
   assert.equal(codexConfig('model = "o3"\n\n[mcp_servers.other]\ncommand = "x"\n', command), `model = "o3"\n\n[mcp_servers.other]\ncommand = "x"\n\n${table}`);
 });
 
-test("Codex's pharo table is replaced where it was, with its subtables", () => {
+test("Codex's pharo table gets the release's command where it was, its other settings kept", () => {
   const before = [
     'model = "o3"',
     "",
     '[mcp_servers."pharo"]',
     'command = "old"',
+    "args = [",
+    '  "mcp",',
+    "]",
+    "startup_timeout_sec = 60",
     "",
     "[profiles.fast]",
     'model = "o4"',
     "",
     "[mcp_servers.pharo.env]",
-    'A = "1"',
+    'PLEXUS_HOME = "/elsewhere"',
     "",
   ].join("\n");
+  const after = codexConfig(before, command);
   assert.equal(
-    codexConfig(before, command),
+    after,
     [
       'model = "o3"',
       "",
-      "[mcp_servers.pharo]",
+      '[mcp_servers."pharo"]',
       'command = "npx"',
       'args = ["--yes", "@evref-bl/plexus@9.9.9", "mcp", "--project", "."]',
+      "startup_timeout_sec = 60",
       "",
       "[profiles.fast]",
       'model = "o4"',
       "",
+      "[mcp_servers.pharo.env]",
+      'PLEXUS_HOME = "/elsewhere"',
+      "",
     ].join("\n"),
   );
-  assert.equal(codexConfig(codexConfig(before, command), command), codexConfig(before, command));
+  assert.equal(codexConfig(after, command), after);
 });
 
 test("Codex's pharo server in another form is left to the user", () => {
@@ -97,10 +106,18 @@ test("OpenCode's older shape is kept where the file lists other servers that way
   });
 });
 
-test("an OpenCode configuration that is not plain JSON is left to the user", () => {
+test("OpenCode's pharo entry keeps what it set besides the command", () => {
+  const earlier = '{"mcp": {"servers": {"pharo": {"type": "local", "command": ["old"], "timeout": 60, "codemode": true}}}}';
+  const after = openCodeConfig(earlier, command);
+  assert.deepEqual(JSON.parse(after).mcp.servers.pharo, { type: "local", command, timeout: 60, codemode: false });
+  assert.equal(openCodeConfig(after, command), after);
+});
+
+test("an OpenCode configuration that is not plain JSON is left to the user, with the entry to add", () => {
   for (const text of ['{\n  // comment\n  "mcp": {}\n}', "[]", '{"mcp": []}', '{"mcp": {"servers": 1}}']) {
-    assert.throws(() => openCodeConfig(text, command), Refusal, text);
+    assert.throws(() => openCodeConfig(text, command), (error) => error instanceof Refusal && error.message.includes('"pharo": {"type":"local"'), text);
   }
+  assert.throws(() => codexConfig('mcp_servers.pharo.command = "x"\n', command), /\[mcp_servers\.pharo\]\ncommand = "npx"/);
 });
 
 test("install writes the skills and the server entry, and again the same", (t) => {

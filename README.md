@@ -65,10 +65,15 @@ npx --yes @evref-bl/pharo-agent@latest install --host opencode
 
 It copies the skills into `.agents/skills`, and adds the `pharo` server,
 running the PLexus the release pins, to `.codex/config.toml` or
-`opencode.json`, keeping everything else they hold. Running it again installs
-the latest release over what it wrote. Codex reads `.codex/config.toml` in a
-trusted project only. In OpenCode the entry sets `codemode: false`, which
-keeps OpenCode from hiding its tools inside `execute`.
+`opencode.json`, keeping everything else they hold, skills of your own
+included. Running it again installs the latest release over what it wrote,
+which `.agents/skills/.pharo-agent.json` records. Committed, these files give
+every clone the same setup.
+
+Codex reads `.codex/config.toml` only in a project it trusts, which it asks
+the first time it starts there; until then the skills arrive without the
+server. In OpenCode the entry sets `codemode: false`, which keeps OpenCode
+from hiding its tools inside `execute`.
 
 ## What the agent gets
 

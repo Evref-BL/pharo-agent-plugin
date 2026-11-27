@@ -116,32 +116,33 @@ function tableName(header) {
  */
 export function codexConfig(text, command, file = ".codex/config.toml") {
   const lines = text === "" ? [] : text.replace(/\r\n/g, "\n").replace(/\n$/, "").split("\n");
-  const block = [
-    "[mcp_servers.pharo]",
-    `command = ${JSON.stringify(command[0])}`,
-    `args = [${command
-      .slice(1)
-      .map((arg) => JSON.stringify(arg))
-      .join(", ")}]`,
-  ];
+  const block = codexTable(command).split("\n");
 
-  // The old table's lines, and its subtables', wherever they are, give way to
-  // the block, written where the table first was.
+  // The table's command and args give way to the release's, written under its
+  // header; its other keys and its subtables, such as env, stay.
   const kept = [];
   let table = "";
-  let ours = false;
-  let placed = false;
+  let main = false;
+  let found = false;
+  let inArray = false;
   for (const line of lines) {
+    if (inArray) {
+      inArray = !/\]\s*(?:#.*)?$/.test(line);
+      continue;
+    }
     const header = line.match(tableHeader);
     if (header && !line.trimStart().startsWith("[[")) {
       table = tableName(header[1]);
-      ours = table === "mcp_servers.pharo" || table.startsWith("mcp_servers.pharo.");
-      if (ours && !placed) {
-        kept.push(...block, "");
-        placed = true;
+      main = table === "mcp_servers.pharo" && !found;
+      kept.push(line);
+      if (main) {
+        kept.push(...block.slice(1));
+        found = true;
       }
-      if (ours) continue;
-    } else if (ours) {
+      continue;
+    }
+    if (main && /^\s*["']?(?:command|args)["']?\s*=/.test(line)) {
+      inArray = /^\s*["']?args["']?\s*=\s*\[/.test(line) && !/\]\s*(?:#.*)?$/.test(line);
       continue;
     }
     // A `pharo` server written as dotted keys or an inline table is not one
@@ -150,47 +151,63 @@ export function codexConfig(text, command, file = ".codex/config.toml") {
     const inTable = table === "mcp_servers" && /^\s*["']?pharo["']?\s*[.=]/.test(line);
     if (dotted || inTable) {
       throw new Refusal(
-        `${file} defines the pharo server in a form this does not edit: make it a [mcp_servers.pharo] table, or remove it, then install again.`,
+        `${file} defines the pharo server in a form this does not edit. Replace it with this table, then install again:\n\n${codexTable(command)}`,
       );
     }
     kept.push(line);
   }
-  if (!placed) {
+  if (!found) {
     kept.push(...(kept.length > 0 && kept.at(-1).trim() !== "" ? [""] : []), ...block);
   }
   while (kept.length > 0 && kept.at(-1).trim() === "") kept.pop();
   return `${kept.join("\n")}\n`;
 }
 
+function codexTable(command) {
+  const args = command.slice(1).map((arg) => JSON.stringify(arg));
+  return `[mcp_servers.pharo]\ncommand = ${JSON.stringify(command[0])}\nargs = [${args.join(", ")}]`;
+}
+
 /**
  * OpenCode's configuration with its `pharo` server running `command`, under
  * `mcp.servers`, or directly under `mcp` where the file already lists its
- * servers that older way. Every other key is kept.
+ * servers that older way. Every other key is kept, the entry's own included.
  */
 export function openCodeConfig(text, command, file = "opencode.json") {
+  const byHand = (why) =>
+    new Refusal(
+      `${file} ${why}. Add the pharo server to its "mcp" "servers" yourself:\n\n"pharo": ${JSON.stringify(openCodeEntry(undefined, command))}`,
+    );
   let config;
   try {
     config = text.trim() === "" ? { $schema: "https://opencode.ai/config.json" } : JSON.parse(text);
   } catch {
-    throw new Refusal(`${file} is not plain JSON, which this edits: add the pharo server to it by hand, as the README shows.`);
+    throw byHand("is not plain JSON, which this edits");
   }
   if (!isObject(config) || (config.mcp !== undefined && !isObject(config.mcp))) {
-    throw new Refusal(`${file} does not hold a configuration this edits: add the pharo server to it by hand, as the README shows.`);
+    throw byHand("does not hold a configuration this edits");
   }
 
   const mcp = config.mcp ?? {};
   const older = mcp.servers === undefined && Object.keys(mcp).some((key) => key !== "pharo");
   if (older) {
-    mcp.pharo = { type: "local", command, enabled: true, codemode: false };
+    mcp.pharo = { ...openCodeEntry(mcp.pharo, command), enabled: true };
   } else {
     if (mcp.servers !== undefined && !isObject(mcp.servers)) {
-      throw new Refusal(`${file} has an mcp.servers this does not edit: add the pharo server to it by hand, as the README shows.`);
+      throw byHand("has an mcp.servers this does not edit");
     }
+    const entry = openCodeEntry(mcp.servers?.pharo ?? mcp.pharo, command);
     delete mcp.pharo;
-    mcp.servers = { ...mcp.servers, pharo: { type: "local", command, codemode: false } };
+    mcp.servers = { ...mcp.servers, pharo: entry };
   }
   config.mcp = mcp;
   return `${JSON.stringify(config, null, indentation(text))}\n`;
+}
+
+/** The pharo entry running `command`, with what an earlier one set besides. */
+function openCodeEntry(earlier, command) {
+  const { type, command: _command, codemode, enabled, ...rest } = isObject(earlier) ? earlier : {};
+  return { type: "local", command, ...rest, codemode: false };
 }
 
 function isObject(value) {
