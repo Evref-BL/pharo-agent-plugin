@@ -34,6 +34,6 @@
   },
   "dependencies": {
     "@evref-bl/pharo-mcp": "4.6.1",
-    "@evref-bl/plexus": "1.0.1"
+    "@evref-bl/plexus": "1.1.0"
   }
 }
