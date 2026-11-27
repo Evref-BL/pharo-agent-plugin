@@ -66,8 +66,9 @@ instead of a new issue.
 One issue per problem; findings that share a cause make one issue. Title it
 with what goes wrong, in the tool's own terms. Keep the body short:
 
-- **Tool:** its name; `pharo-agent 0.26.0`; the image's Pharo version; the
-  host you run in.
+- **Tool:** its name; `pharo-agent 0.26.0`; the image's Pharo version, and
+  the Pharo MCP release it holds when `image_list` says it is older than the
+  one images are created with; the host you run in.
 - **What happened:** what you asked for and what came back, the error quoted
   and trimmed.
 - **Expected:** what would have served.
@@ -76,8 +77,9 @@ with what goes wrong, in the tool's own terms. Keep the body short:
 
 End with: "Reported through the pharo-agent feedback skill."
 
-Issues are public. Leave out the project's code, class and package names,
-paths, URLs, and anything that identifies the user or their organization.
+Issues are public. Leave out the project's code, its class, package and
+image names, paths, URLs, and anything that identifies the user or their
+organization: write `<image>` where a call named one.
 Reproduce on Pharo's own classes, such as `Object` or `OrderedCollection`, or
 describe the shape of what you had. When a problem cannot be shown without the
 project's material, say so and let the user decide.

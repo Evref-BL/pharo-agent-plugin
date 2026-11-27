@@ -103,3 +103,17 @@ jobs:
             --target "$RELEASE_SHA" \
             --title "${{ steps.version.outputs.tag }}" \
             --generate-notes
+
+      # The marketplaces install from stable. Moved only once the tag exists,
+      # it never names a release that is not out yet, nor main between
+      # releases. Without force, the move refuses anything but a fast-forward.
+      - name: Move stable to the release
+        if: steps.version.outputs.should_release == 'true'
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          if gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/stable" >/dev/null 2>&1; then
+            gh api --method PATCH "repos/${GITHUB_REPOSITORY}/git/refs/heads/stable" -f sha="$RELEASE_SHA" >/dev/null
+          else
+            gh api --method POST "repos/${GITHUB_REPOSITORY}/git/refs" -f ref=refs/heads/stable -f sha="$RELEASE_SHA" >/dev/null
+          fi

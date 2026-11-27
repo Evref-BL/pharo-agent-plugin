@@ -1,8 +1,10 @@
 # pharo-agent contributor guide
 
-The plugin is manifests, a server declaration and skills. It has no code of
-its own to run: `.mcp.json` starts PLexus's `plexus mcp` from the plugin's
-dependencies, in the host's project.
+The plugin is manifests, a server declaration and skills: `.mcp.json` starts
+PLexus's `plexus mcp` from the plugin's dependencies, in the host's project.
+Its one piece of code is the installer, `pharo-agent install`, which writes
+the skills and the server entry into a project for the hosts that cannot take
+the plugin, run from npm with `npx`.
 
 ## Boundaries
 
@@ -20,11 +22,17 @@ dependencies, in the host's project.
 - Pin dependencies to exact released versions. A host installs them only
   then, and a release is a combination that was tested.
 - The `@evref-bl/pharo-mcp` pin is the MCP release PLexus loads into the
-  images it creates. `update-plexus.yml` moves both pins and rebuilds the
-  skills.
+  images it creates. `update-plexus.yml` moves both pins, rebuilds the
+  skills and moves the README's PLexus release with them.
 - `scripts/set-version.mjs` moves every reference to the release: the
-  manifests, the marketplace's tag and the feedback skill's version.
-- Nothing is written into a user's project.
+  manifests and the feedback skill's version.
+- The marketplaces install from `stable`, which the release workflow moves to
+  a release once its tag exists.
+- A release is major when what the README's Versions section lists changes,
+  a tool's name or arguments included.
+- Nothing is written into a user's project but by the installer, which
+  writes only what the host reads: the skills, its record of them, and the
+  server entry, keeping every other key and skill.
 
 ## Validation
 

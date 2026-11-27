@@ -9,7 +9,12 @@
     "url": "git+https://github.com/Evref-BL/pharo-agent-plugin.git"
   },
   "type": "module",
+  "bin": {
+    "pharo-agent": "bin/pharo-agent.js"
+  },
   "files": [
+    "bin",
+    "src",
     "skills",
     ".mcp.json",
     "plugin.json",
@@ -24,7 +29,8 @@
   "scripts": {
     "test": "node --test test/*.test.js",
     "skills": "node scripts/build-skills.mjs",
-    "package:check": "npm pack --dry-run"
+    "package:check": "npm pack --dry-run",
+    "pin-readme": "node scripts/pin-readme.mjs"
   },
   "dependencies": {
     "@evref-bl/pharo-mcp": "4.6.0",

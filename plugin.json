@@ -14,10 +14,5 @@
     "pharo",
     "smalltalk",
     "mcp"
-  ],
-  "extensions": {
-    "com.openai": {
-      "requires_local_executor": true
-    }
-  }
+  ]
 }
