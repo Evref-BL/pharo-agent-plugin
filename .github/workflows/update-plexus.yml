@@ -54,23 +54,21 @@ jobs:
           # 404 for a version that installed without complaint minutes later,
           # and that consumer's whole update stopped at this step. The install
           # below needs these versions fetchable anyway, so wait for the
-          # registry rather than racing it.
+          # registry rather than racing it. Its lag is not bounded: the
+          # pharo-launcher-mcp 1.1.0 publish of 2026-11-27 took four minutes to
+          # show, five seconds past the 225 such a wait gave it then. Wait by
+          # the clock, well within the job's timeout.
           wait_for_version() {
-            local package="$1" version="$2" attempt
+            local package="$1" version="$2" deadline=$((SECONDS + 900))
 
-            for attempt in $(seq 1 10); do
-              if [ "$(npm view "${package}@${version}" version 2>/dev/null)" = "$version" ]; then
-                return 0
+            until [ "$(npm view "${package}@${version}" version 2>/dev/null)" = "$version" ]; do
+              if [ "$SECONDS" -ge "$deadline" ]; then
+                echo "${package}@${version} did not reach the registry in 15 minutes." >&2
+                return 1
               fi
-
-              echo "::notice::${package}@${version} is not in the registry yet (attempt ${attempt})"
-              if [ "$attempt" -lt 10 ]; then
-                sleep "$((attempt * 5))"
-              fi
+              echo "::notice::${package}@${version} is not in the registry yet"
+              sleep 15
             done
-
-            echo "${package}@${version} never reached the registry." >&2
-            return 1
           }
 
           wait_for_version "@evref-bl/plexus" "$plexus_version"
