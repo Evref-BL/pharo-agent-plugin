@@ -66,7 +66,7 @@ instead of a new issue.
 One issue per problem; findings that share a cause make one issue. Title it
 with what goes wrong, in the tool's own terms. Keep the body short:
 
-- **Tool:** its name; `pharo-agent 1.0.0`; the image's Pharo version, and
+- **Tool:** its name; `pharo-agent 1.1.0`; the image's Pharo version, and
   the Pharo MCP release it holds when `image_list` says it is older than the
   one images are created with; the host you run in.
 - **What happened:** what you asked for and what came back, the error quoted
