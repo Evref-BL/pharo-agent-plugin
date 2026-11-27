@@ -1,8 +1,10 @@
 # pharo-agent contributor guide
 
-The plugin is manifests, a server declaration and skills. It has no code of
-its own to run: `.mcp.json` starts PLexus's `plexus mcp` from the plugin's
-dependencies, in the host's project.
+The plugin is manifests, a server declaration and skills: `.mcp.json` starts
+PLexus's `plexus mcp` from the plugin's dependencies, in the host's project.
+Its one piece of code is the installer, `pharo-agent install`, which writes
+the skills and the server entry into a project for the hosts that cannot take
+the plugin, run from npm with `npx`.
 
 ## Boundaries
 
@@ -28,7 +30,9 @@ dependencies, in the host's project.
   a release once its tag exists.
 - A release is major when what the README's Versions section lists changes,
   a tool's name or arguments included.
-- Nothing is written into a user's project.
+- Nothing is written into a user's project but by the installer, which
+  writes only what the host reads: the skills, its record of them, and the
+  server entry, keeping every other key and skill.
 
 ## Validation
 

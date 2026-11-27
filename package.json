@@ -9,7 +9,12 @@
     "url": "git+https://github.com/Evref-BL/pharo-agent-plugin.git"
   },
   "type": "module",
+  "bin": {
+    "pharo-agent": "bin/pharo-agent.js"
+  },
   "files": [
+    "bin",
+    "src",
     "skills",
     ".mcp.json",
     "plugin.json",

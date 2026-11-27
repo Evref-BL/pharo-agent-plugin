@@ -27,8 +27,7 @@ into the images it creates.
 - [Pharo Launcher](https://pharo-project.github.io/pharo-launcher/), which is
   where templates and VMs come from.
 - Network access to create an image: the Launcher downloads its template and
-  VM, and the image loads MCP from GitHub. In Codex and OpenCode, also the
-  first time the server starts, as `npx` fetches PLexus.
+  VM, and the image loads MCP from GitHub.
 
 ## Installing
 
@@ -53,60 +52,23 @@ claude plugin marketplace add Evref-BL/pharo-agent-plugin
 claude plugin install pharo-agent@evref-bl --scope project
 ```
 
-### Codex
+### Codex and OpenCode
 
-The plugin gives Codex the skills:
-
-```sh
-codex plugin marketplace add Evref-BL/pharo-agent-plugin@stable
-codex plugin add pharo-agent@evref-bl
-```
-
-Codex does not tell a plugin's server which project it serves, so the server
-goes in Codex's own configuration, where it starts in the project:
+Neither takes the whole plugin: Codex does not tell a plugin's server which
+project it serves, and OpenCode has no plugins of this kind. The plugin's
+installer writes what each needs into the project instead. Run it there:
 
 ```sh
-codex mcp add pharo -- npx --yes @evref-bl/plexus@1.0.0 mcp --project .
+npx --yes @evref-bl/pharo-agent@latest install --host codex
+npx --yes @evref-bl/pharo-agent@latest install --host opencode
 ```
 
-To keep it to one project, put the same entry in that trusted project's
-`.codex/config.toml` instead:
-
-```toml
-[mcp_servers.pharo]
-command = "npx"
-args = ["--yes", "@evref-bl/plexus@1.0.0", "mcp", "--project", "."]
-```
-
-A session that ends while `npx` first fetches PLexus can leave the next one
-without the server for a minute; `npx --yes @evref-bl/plexus@1.0.0 --version`
-fetches it beforehand.
-
-A new release takes `codex plugin marketplace upgrade evref-bl`, then
-`codex plugin add pharo-agent@evref-bl` and the server entry again, as this
-README gives them for that release: each replaces what it installed.
-
-### OpenCode
-
-OpenCode has no plugins of this kind: add PLexus's server to the project's
-`opencode.json`. `codemode: false` keeps OpenCode from hiding its tools
-inside `execute`:
-
-```json
-{
-  "mcp": {
-    "servers": {
-      "pharo": {
-        "type": "local",
-        "command": ["npx", "--yes", "@evref-bl/plexus@1.0.0", "mcp", "--project", "."],
-        "codemode": false
-      }
-    }
-  }
-}
-```
-
-OpenCode then has the server and its instructions, but not the skills.
+It copies the skills into `.agents/skills`, and adds the `pharo` server,
+running the PLexus the release pins, to `.codex/config.toml` or
+`opencode.json`, keeping everything else they hold. Running it again installs
+the latest release over what it wrote. Codex reads `.codex/config.toml` in a
+trusted project only. In OpenCode the entry sets `codemode: false`, which
+keeps OpenCode from hiding its tools inside `execute`.
 
 ## What the agent gets
 
