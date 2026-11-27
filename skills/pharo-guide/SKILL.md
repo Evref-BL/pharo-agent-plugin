@@ -19,7 +19,7 @@ than letting source stand in for it.
   about another.
 - An image takes one writer: it has no branches, so two agents in it share
   every edit.
-- Tools never save the image.
+- The image's tools never save it; a tool that stops it may.
 - The user may commit through Iceberg unseen: ask the image and the checkout
   before calling any work uncommitted.
 
@@ -34,7 +34,8 @@ than letting source stand in for it.
   the `pharo-image-sync` skill.
 - Reproducing smalltalkCI or GitHub failures: the `pharo-ci-repro` skill.
 - Profiling: the `pharo-code-profiling` skill.
-- Recovering a stopped standalone image: the `pharo-mcp-recovery` skill.
+- An image that takes no calls, or what a stop without saving lost:
+  the `pharo-mcp-recovery` skill.
 
 ## Workflow
 
